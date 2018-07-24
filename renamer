@@ -1,0 +1,57 @@
+#!/usr/bin/env python
+
+import sys
+import os
+import tempfile
+
+def printError(str):
+	print('\033[91m' + str + '\033[0m', file=sys.stderr)
+
+namesOld = sys.argv[1:]
+if len(namesOld) == 0:
+	print('Usage: renamer <files to be renamed> ...')
+	sys.exit()
+
+file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+try:
+	filename = file.name
+	file.close()
+
+	file = open(filename, 'w', errors='replace') # NamedTemporaryFile does not have errors parameter
+	try:
+		for arg in namesOld:
+			file.write(arg + '\n')
+	finally:
+		file.close()
+
+	ret = os.system('vim ' + filename)
+	if ret != 0:
+		raise EnvironmentError('Editor returned error code: %i' % ret)
+
+	file = open(filename, 'r')
+	try:
+		namesNew = file.readlines()
+	finally:
+		file.close()
+finally:
+	os.remove(filename)
+
+if len(namesOld) != len(namesNew):
+	printError('Different number of lines: original %i, new %i.' % (len(namesOld), len(namesNew)))
+	sys.exit()
+
+for index in range(0, len(namesOld)):
+	nameOld = namesOld[index].strip()
+	nameNew = namesNew[index].strip()
+	if nameOld == nameNew:
+		continue
+
+	if not os.path.exists(nameOld):
+		printError('File ' + nameOld + ' does not exist.')
+	elif os.path.exists(nameNew):
+		printError('File ' + nameNew + ' already exists.')
+	else:
+		try:
+			os.rename(nameOld, nameNew)
+		except EnvironmentError as e:
+			printError('Cannot rename %s: %s' % (nameOld, e.strerror))
