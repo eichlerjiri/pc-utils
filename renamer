@@ -1,6 +1,6 @@
 #!/usr/bin/env python
-import sys
 import os
+import sys
 import tempfile
 
 def printError(str):
@@ -8,12 +8,12 @@ def printError(str):
 
 namesOld = sys.argv[1:]
 if len(namesOld) == 0:
-	printError('Usage: %s <files to be renamed>' % sys.argv[0])
-	sys.exit()
+	print('Usage: %s <files to be renamed>' % sys.argv[0], file=sys.stderr)
+	sys.exit(1)
 
-file = tempfile.NamedTemporaryFile(mode='w', delete=False)
+file = tempfile.NamedTemporaryFile('w', delete=False)
+filename = file.name
 try:
-	filename = file.name
 	file.close()
 
 	file = open(filename, 'w', errors='replace') # NamedTemporaryFile does not have errors parameter
@@ -37,7 +37,7 @@ finally:
 
 if len(namesOld) != len(namesNew):
 	printError('Different number of lines: original %i, new %i.' % (len(namesOld), len(namesNew)))
-	sys.exit()
+	sys.exit(1)
 
 for index in range(0, len(namesOld)):
 	nameOld = namesOld[index].strip()
