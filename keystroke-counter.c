@@ -1,6 +1,8 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <stdarg.h>
+#include <string.h>
+#include <errno.h>
 #include <linux/input.h>
 
 void fatal(char *msg, ...) {
@@ -23,7 +25,7 @@ int main(int argc, char *argv[]) {
 
 	FILE *input = fopen(argv[1], "r");
 	if (!input) {
-		fatal("Cannot open %s", argv[1]);
+		fatal("Cannot open %s: %s", argv[1], strerror(errno));
 	}
 
 	unsigned long long count = 0;
@@ -36,6 +38,9 @@ int main(int argc, char *argv[]) {
 			count++;
 			printf ("%llu\n", count);
 		}
+	}
+	if (ferror(input)) {
+		fatal("Error reading %s: %s", argv[1], strerror(errno));
 	}
 
 	fclose(input);
