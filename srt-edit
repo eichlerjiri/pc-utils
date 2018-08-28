@@ -84,7 +84,7 @@ try:
 			break
 		linenum += 1
 
-		mc = re.match(b'^([^\r\n]*)([\r\n]*)$', line)
+		mc = re.match(b'^(.*?)([\r\n]*)$', line)
 		content = mc.group(1)
 
 		if mc.group(2) != b'\r\n':
@@ -118,17 +118,17 @@ try:
 			millis1 = toFullMillis(m.group(1), m.group(2), m.group(3), m.group(4))
 			millis2 = toFullMillis(m.group(5), m.group(6), m.group(7), m.group(8))
 
-			if millis1 >= millis2:
-				print('line %i: Invalid time interval' % linenum)
-			if millis1 < lastMillis:
-				print('line %i: Overlap' % linenum)
-			lastMillis = millis2
-
 			if process:
 				if (millisFrom == -1 or millisFrom <= millis1) and (millisTo == -1 or millisTo > millis1):
 					millis1 += diff
 					millis2 += diff
 				outfile.write(b'%s --> %s\r\n' % (toSrt(millis1), toSrt(millis2)))
+
+			if millis1 >= millis2:
+				print('line %i: Invalid time interval' % linenum)
+			if millis1 < lastMillis:
+				print('line %i: Overlap' % linenum)
+			lastMillis = millis2
 
 			state = 2
 		elif state == 2:
