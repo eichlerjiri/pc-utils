@@ -22,6 +22,9 @@ int main(int argc, char *argv[]) {
 		fprintf(stderr, "Usage: %s /dev/input/<device>\n", argv[0]);
 		return 1;
 	}
+	if (argc > 2) {
+		fatal("Too many arguments");
+	}
 
 	FILE *input = fopen(argv[1], "r");
 	if (!input) {
