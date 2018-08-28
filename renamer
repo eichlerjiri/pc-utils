@@ -8,37 +8,31 @@ def printError(str):
 
 namesOld = sys.argv[1:]
 if len(namesOld) == 0:
-	print('Usage: %s <files to be renamed>' % sys.argv[0], file=sys.stderr)
+	print('Usage: ' + sys.argv[0] + ' <files to be renamed>', file=sys.stderr)
 	sys.exit(1)
 
-file = tempfile.NamedTemporaryFile('w', delete=False)
-filename = file.name
-try:
-	file.close()
+with tempfile.NamedTemporaryFile('w', delete=False) as file:
+	filename = file.name
 
-	file = open(filename, 'w', errors='replace') # NamedTemporaryFile does not have errors parameter
-	try:
+try:
+	with open(filename, 'w', errors='replace') as file: # NamedTemporaryFile does not have errors parameter
 		for arg in namesOld:
 			file.write(arg + '\n')
-	finally:
-		file.close()
 
 	ret = os.system('vim ' + filename)
 	if ret != 0:
-		raise EnvironmentError('Editor returned error code: %i' % ret)
+		raise EnvironmentError('Editor returned error code: ' + str(ret))
 
-	file = open(filename, 'r')
-	try:
+	with open(filename, 'r') as file:
 		namesNew = file.readlines()
-	finally:
-		file.close()
 finally:
 	os.remove(filename)
 
 if len(namesOld) != len(namesNew):
-	printError('Different number of lines: original %i, new %i.' % (len(namesOld), len(namesNew)))
+	printError('Different number of lines: original ' + str(len(namesOld)) + ', new ' + str(len(namesNew)))
 	sys.exit(1)
 
+ret = 0
 for index in range(0, len(namesOld)):
 	nameOld = namesOld[index].strip()
 	nameNew = namesNew[index].strip()
@@ -47,10 +41,14 @@ for index in range(0, len(namesOld)):
 
 	if not os.path.exists(nameOld):
 		printError('File ' + nameOld + ' does not exist.')
+		ret = 1
 	elif os.path.exists(nameNew):
 		printError('File ' + nameNew + ' already exists.')
+		ret = 1
 	else:
 		try:
 			os.rename(nameOld, nameNew)
 		except EnvironmentError as e:
-			printError('Cannot rename %s: %s' % (nameOld, e.strerror))
+			printError('Cannot rename ' + nameOld + ': ' + e.strerror)
+			ret = 1
+sys.exit(ret)
