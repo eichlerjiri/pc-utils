@@ -8,7 +8,7 @@ def printError(str):
 
 namesOld = sys.argv[1:]
 if len(namesOld) == 0:
-	print('Usage: ' + sys.argv[0] + ' <files to be renamed>', file=sys.stderr)
+	print('Usage: ' + os.path.basename(sys.argv[0]) + ' <files to be renamed>', file=sys.stderr)
 	sys.exit(1)
 
 with tempfile.NamedTemporaryFile('w', delete=False) as file:
