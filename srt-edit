@@ -122,7 +122,7 @@ millisTo = -1
 
 process = 0
 diff = 0
-diffFps = 1
+diffFps = 0
 
 try:
 	done = 0
