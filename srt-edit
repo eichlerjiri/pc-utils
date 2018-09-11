@@ -72,8 +72,9 @@ def processFile(file, infile, process, diff, diffFps):
 			if process:
 				if (millisFrom == -1 or millisFrom <= millis1
 				) and (millisTo == -1 or millisTo > millis1):
-					millis1 += diff + int(round(diffFps * (millis1 - millisFrom)))
-					millis2 += diff + int(round(diffFps * (millis2 - millisFrom)))
+					f = millisFrom if millisFrom != -1 else millisFrom
+					millis1 += diff + int(round(diffFps * (millis1 - f)))
+					millis2 += diff + int(round(diffFps * (millis2 - f)))
 					if millis1 < 0 or millis2 < 0:
 						printError(file + ': line ' + str(linenum) + ': Negative time')
 						return False
@@ -137,8 +138,8 @@ try:
 			done = 1
 		elif '%' in sys.argv[i]:
 			idx = sys.argv[i].index('%')
-			fpsFrom = int(sys.argv[i][:idx])
-			fpsTo = int(sys.argv[i][idx+len('%'):])
+			fpsFrom = float(sys.argv[i][:idx])
+			fpsTo = float(sys.argv[i][idx+len('%'):])
 			if fpsFrom == 0 or fpsTo == 0:
 				printError('Invalid argument: ' + sys.argv[i])
 				sys.exit(1)
