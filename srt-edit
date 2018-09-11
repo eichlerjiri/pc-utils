@@ -6,12 +6,6 @@ import sys
 def printError(str):
 	print('\033[91m' + str + '\033[0m', file=sys.stderr)
 
-def incArgNum(i):
-	if i + 1 >= len(sys.argv):
-		printError('Missing arguments')
-		sys.exit(1)
-	return i + 1
-
 def toFullMillis(hours, minutes, secs, millis):
 	return int(millis) + 1000 * (int(secs) + 60 * (int(minutes) + (60 * int(hours))))
 
@@ -25,7 +19,7 @@ def toSrt(fullMillis):
 	minutes %= 60
 	return b'%02i:%02i:%02i,%03i' % (hours, minutes, secs, millis)
 
-def processFile(file, infile, process, diff):
+def processFile(file, infile, process, diff, diffFps):
 	output = b''
 	extraText = '[FIXING] ' if process else ''
 
@@ -78,8 +72,8 @@ def processFile(file, infile, process, diff):
 			if process:
 				if (millisFrom == -1 or millisFrom <= millis1
 				) and (millisTo == -1 or millisTo > millis1):
-					millis1 += diff
-					millis2 += diff
+					millis1 += diff + int(round(diffFps * (millis1 - millisFrom)))
+					millis2 += diff + int(round(diffFps * (millis2 - millisFrom)))
 					if millis1 < 0 or millis2 < 0:
 						printError(file + ': line ' + str(linenum) + ': Negative time')
 						return False
@@ -109,51 +103,66 @@ if len(sys.argv) < 2:
 	print('Usage: ' + os.path.basename(sys.argv[0]) + ' [from, to] <command> <SRT files to edit>\n'
 		'\n'
 		'command:\n'
-		'    verify      check SRT file for common format problems\n'
-		'    fix         rewrite SRT file to fix some format problems\n'
-		'    +<millis>   forward subtitles for amount of milliseconds\n'
-		'    -<millis>   backward subtitles for amount of milliseconds\n'
+		'    verify          check SRT file for common format problems\n'
+		'    fix             rewrite SRT file to fix some format problems\n'
+		'    +<millis>       forward subtitles for amount of milliseconds\n'
+		'    -<millis>       backward subtitles for amount of milliseconds\n'
+		'    <fps1>%<fps2>   change speed of subtitles by fps1/fps2\n'
 		'\n'
 		'from, to:\n'
-		'    from:<secs> time index from which do retime (optional)\n'
-		'    to:<secs>   time index to which do retime (optional)', file=sys.stderr)
+		'    from:<secs>     time index from which do retime (optional)\n'
+		'    to:<secs>       time index to which do retime (optional)', file=sys.stderr)
 	sys.exit(1)
 
 i = 1
 
 millisFrom = -1
 millisTo = -1
-while True:
-	try:
+
+process = 0
+diff = 0
+diffFps = 1
+
+try:
+	done = 0
+	while not done:
 		if sys.argv[i].startswith('from:'):
 			millisFrom = int(sys.argv[i][len('from:'):]) * 1000
 		elif sys.argv[i].startswith('to:'):
 			millisTo = int(sys.argv[i][len('to:'):]) * 1000
+		elif sys.argv[i] == 'verify':
+			done = 1
+		elif sys.argv[i] == 'fix':
+			process = 1
+			done = 1
+		elif '%' in sys.argv[i]:
+			idx = sys.argv[i].index('%')
+			fpsFrom = int(sys.argv[i][:idx])
+			fpsTo = int(sys.argv[i][idx+len('%'):])
+			if fpsFrom == 0 or fpsTo == 0:
+				printError('Invalid argument: ' + sys.argv[i])
+				sys.exit(1)
+			process = 1
+			diffFps = fpsFrom / fpsTo - 1;
+			done = 1
 		else:
-			break;
-	except ValueError:
-		printError('Invalid argument: ' + sys.argv[i])
-		sys.exit(1)
-	i = incArgNum(i)
+			process = 1
+			diff = int(sys.argv[i])
+			done = 1
 
-process = 0
-diff = 0
-if sys.argv[i] == 'fix':
-	process = 1
-elif sys.argv[i] != 'verify':
-	try:
-		process = 1
-		diff = int(sys.argv[i])
-	except ValueError:
-		printError('Invalid argument: ' + sys.argv[i])
-		sys.exit(1)
-i = incArgNum(i)
+		i += 1
+		if i >= len(sys.argv):
+			printError('Missing arguments')
+			sys.exit(1)
+except ValueError:
+	printError('Invalid argument: ' + sys.argv[i])
+	sys.exit(1)
 
 ret = 0
 for file in sys.argv[i:]:
 	try:
 		with open(file, 'rb') as infile:
-			output = processFile(file, infile, process, diff)
+			output = processFile(file, infile, process, diff, diffFps)
 		if output == False:
 			ret = 1
 		elif process:
