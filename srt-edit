@@ -70,9 +70,9 @@ def processFile(file, infile, process, diff, diffFps):
 			millis2 = toFullMillis(m.group(5), m.group(6), m.group(7), m.group(8))
 
 			if process:
-				if (millisFrom == -1 or millisFrom <= millis1
-				) and (millisTo == -1 or millisTo > millis1):
-					f = millisFrom if millisFrom != -1 else millisFrom
+				if (millisFrom == False or millisFrom <= millis1
+				) and (millisTo == False or millisTo > millis1):
+					f = millisFrom if millisFrom != False else millisFrom
 					millis1 += diff + int(round(diffFps * (millis1 - f)))
 					millis2 += diff + int(round(diffFps * (millis2 - f)))
 					if millis1 < 0 or millis2 < 0:
@@ -101,7 +101,7 @@ def processFile(file, infile, process, diff, diffFps):
 	return output
 
 if len(sys.argv) < 2:
-	print('Usage: ' + os.path.basename(sys.argv[0]) + ' [from, to] <command> <SRT files to edit>\n'
+	print('Usage: ' + os.path.basename(sys.argv[0]) + ' [arguments] <command> <SRT files to edit>\n'
 		'\n'
 		'command:\n'
 		'    verify          check SRT file for common format problems\n'
@@ -110,53 +110,57 @@ if len(sys.argv) < 2:
 		'    -<millis>       backward subtitles for amount of milliseconds\n'
 		'    <fps1>%<fps2>   change speed of subtitles by fps1/fps2\n'
 		'\n'
-		'from, to:\n'
-		'    from:<secs>     time index from which do retime (optional)\n'
-		'    to:<secs>       time index to which do retime (optional)', file=sys.stderr)
+		'arguments:\n'
+		'    -from <secs>     time index from which do retime (optional)\n'
+		'    -to <secs>       time index to which do retime (optional)', file=sys.stderr)
 	sys.exit(1)
 
 i = 1
 
-millisFrom = -1
-millisTo = -1
+millisFrom = False
+millisTo = False
 
-process = 0
+process = False
 diff = 0
 diffFps = 0
 
 try:
-	done = 0
+	done = False
 	while not done:
-		if sys.argv[i].startswith('from:'):
-			millisFrom = int(sys.argv[i][len('from:'):]) * 1000
-		elif sys.argv[i].startswith('to:'):
-			millisTo = int(sys.argv[i][len('to:'):]) * 1000
-		elif sys.argv[i] == 'verify':
-			done = 1
-		elif sys.argv[i] == 'fix':
-			process = 1
-			done = 1
-		elif '%' in sys.argv[i]:
-			idx = sys.argv[i].index('%')
-			fpsFrom = float(sys.argv[i][:idx])
-			fpsTo = float(sys.argv[i][idx+len('%'):])
-			if fpsFrom == 0 or fpsTo == 0:
-				printError('Invalid argument: ' + sys.argv[i])
-				sys.exit(1)
-			process = 1
-			diffFps = fpsFrom / fpsTo - 1;
-			done = 1
-		else:
-			process = 1
-			diff = int(sys.argv[i])
-			done = 1
-
+		arg = sys.argv[i]
 		i += 1
+
+		if arg == '-from' and i < len(sys.argv):
+			millisFrom = int(sys.argv[i]) * 1000
+			i += 1
+		elif arg == '-to' and i < len(sys.argv):
+			millisTo = int(sys.argv[i]) * 1000
+			i += 1
+		elif arg == 'verify':
+			done = True
+		elif arg == 'fix':
+			process = True
+			done = True
+		elif '%' in arg:
+			idx = arg.index('%')
+			fpsFrom = float(arg[:idx])
+			fpsTo = float(arg[idx+len('%'):])
+			if fpsFrom == 0 or fpsTo == 0:
+				printError('Invalid argument: ' + arg)
+				sys.exit(1)
+			process = True
+			diffFps = fpsFrom / fpsTo - 1;
+			done = True
+		else:
+			process = True
+			diff = int(arg)
+			done = True
+
 		if i >= len(sys.argv):
 			printError('Missing arguments')
 			sys.exit(1)
 except ValueError:
-	printError('Invalid argument: ' + sys.argv[i])
+	printError('Invalid argument: ' + arg)
 	sys.exit(1)
 
 ret = 0
