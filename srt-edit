@@ -111,9 +111,9 @@ if len(sys.argv) < 2:
 		'    <fps1>%<fps2>   change speed of subtitles by fps1/fps2\n'
 		'\n'
 		'arguments:\n'
-		'    -from <secs>     time index from which do retime (optional)\n'
-		'    -to <secs>       time index to which do retime (optional)', file=sys.stderr)
-	sys.exit(1)
+		'    -from <secs>    time index from which do retime (optional)\n'
+		'    -to <secs>      time index to which do retime (optional)', file=sys.stderr)
+	sys.exit(3)
 
 i = 1
 
@@ -147,7 +147,7 @@ try:
 			fpsTo = float(arg[idx+len('%'):])
 			if fpsFrom == 0 or fpsTo == 0:
 				printError('Invalid argument: ' + arg)
-				sys.exit(1)
+				sys.exit(2)
 			process = True
 			diffFps = fpsFrom / fpsTo - 1;
 			done = True
@@ -158,10 +158,10 @@ try:
 
 		if i >= len(sys.argv):
 			printError('Missing arguments')
-			sys.exit(1)
+			sys.exit(2)
 except ValueError:
 	printError('Invalid argument: ' + arg)
-	sys.exit(1)
+	sys.exit(2)
 
 ret = 0
 for file in sys.argv[i:]:

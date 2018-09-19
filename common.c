@@ -6,6 +6,8 @@
 #include <string.h>
 #include <unistd.h>
 
+int return_code = 0;
+
 void verror(const char *msg, va_list valist) {
 	fprintf(stderr, "\033[91m");
 	vfprintf(stderr, msg, valist);
@@ -17,6 +19,8 @@ void error(const char *msg, ...) {
 	va_start(valist, msg);
 	verror(msg, valist);
 	va_end(valist);
+
+	return_code = 1;
 }
 
 void fatal(const char *msg, ...) {
@@ -25,7 +29,7 @@ void fatal(const char *msg, ...) {
 	verror(msg, valist);
 	va_end(valist);
 
-	exit(1);
+	exit(2);
 }
 
 char* asprintfx(const char *fmt, ...) {

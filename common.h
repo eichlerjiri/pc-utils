@@ -8,6 +8,7 @@
 #include <dirent.h>
 
 #define ERRIF if
+extern int return_code;
 
 void fatal(const char *msg, ...);
 char* asprintfx(const char *fmt, ...);

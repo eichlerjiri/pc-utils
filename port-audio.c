@@ -111,7 +111,7 @@ int main(int argc, char **argv) {
 	char *pname = *argv++;
 	if (!*argv) {
 		fprintf(stderr, "Usage: %s -in <input dir> -out <output dir> <input subfiles, subdirs>\n", pname);
-		return 1;
+		return 3;
 	}
 
 	char *in = NULL;
@@ -138,5 +138,5 @@ int main(int argc, char **argv) {
 		process(in, out, *argv++, DT_UNKNOWN, true);
 	}
 
-	return 0;
+	return return_code;
 }
