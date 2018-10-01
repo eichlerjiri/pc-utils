@@ -17,7 +17,7 @@ with tempfile.NamedTemporaryFile('w', delete=False) as file:
 try:
 	with open(filename, 'w', errors='replace') as file: # NamedTemporaryFile does not have errors parameter
 		for arg in namesOld:
-			file.write(arg + '\n')
+			file.write(arg.replace('\n', '?') + '\n')
 
 	ret = os.system('vim ' + filename)
 	if ret != 0:

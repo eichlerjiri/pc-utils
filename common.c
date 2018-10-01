@@ -5,8 +5,9 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
-int return_code = 0;
+int return_code;
 
 void verror(const char *msg, va_list valist) {
 	fprintf(stderr, "\033[91m");
@@ -71,66 +72,4 @@ void execvpx_wait(const char *path, char *const argv[]) {
 		execvp(path, argv);
 		fatal("Cannot execvp %s: %s", path, strerror(errno));
 	}
-}
-
-FILE *fopenx(const char *pathname, const char *mode) {
-	FILE *ret = fopen(pathname, mode);
-	if (!ret) {
-		fatal("Cannot fopen %s: %s", pathname, strerror(errno));
-	}
-	return ret;
-}
-
-size_t freadx(void *ptr, size_t size, size_t nmemb, FILE *stream, const char *pathname) {
-	size_t ret = fread(ptr, size, nmemb, stream);
-	if (!ret && ferror(stream)) {
-		fatal("Cannot fread %s: %s", pathname, strerror(errno));
-	}
-	return ret;
-}
-
-void fclosex(FILE *stream, const char *pathname) {
-	if (fclose(stream)) {
-		fatal("Cannot fclose %s: %s", pathname, strerror(errno));
-	}
-}
-
-int statx(const char *pathname, struct stat *statbuf) {
-	int ret = stat(pathname, statbuf);
-	if (ret) {
-		error("Cannot stat %s: %s", pathname, strerror(errno));
-	}
-	return ret;
-}
-
-DIR *opendirx(const char *name) {
-	DIR *ret = opendir(name);
-	if (!ret) {
-		error("Cannot opendir %s: %s", name, strerror(errno));
-	}
-	return ret;
-}
-
-struct dirent *readdirx(DIR *dirp, const char *name) {
-	errno = 0;
-	struct dirent *ret = readdir(dirp);
-	if (!ret && errno) {
-		error("Cannot readdir %s: %s", name, strerror(errno));
-	}
-	return ret;
-}
-
-void closedirx(DIR *dirp, const char *name) {
-	if (closedir(dirp)) {
-		error("Cannot closedir %s: %s", name, strerror(errno));
-	}
-}
-
-int mkdirx(const char *pathname, mode_t mode) {
-	int ret = mkdir(pathname, mode);
-	if (ret && errno != EEXIST) {
-		error("Cannot mkdir %s: %s", pathname, strerror(errno));
-		return ret;
-	}
-	return 0;
 }

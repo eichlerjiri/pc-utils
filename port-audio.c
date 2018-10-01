@@ -2,17 +2,30 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include <string.h>
-#include <stdbool.h>
+#include <errno.h>
+#include <sys/stat.h>
+#include <dirent.h>
 
 char *combine_path(const char *dir, const char *file) {
 	const char *sep = "";
-	if (dir[strlen(dir)-1] != '/') {
+	if (dir[strlen(dir) - 1] != '/') {
 		sep = "/";
 	}
 	return asprintfx("%s%s%s", dir, sep, file);
 }
 
-int mkdir_rec(char *path, size_t base_length) {
+int prepdir(const char *pathname) {
+	printf("Creating directory: %s\n", pathname);
+
+	int ret = mkdir(pathname, 0755);
+	if (ret && errno != EEXIST) {
+		error("Cannot create directory %s: %s", pathname, strerror(errno));
+		return ret;
+	}
+	return 0;
+}
+
+int prepdir_rec(char *path, size_t base_length) {
 	char *cur = path + base_length;
 	char *last = NULL;
 
@@ -22,11 +35,10 @@ int mkdir_rec(char *path, size_t base_length) {
 		if (cur != new) {
 			if (last) {
 				*last = '\0';
-				printf("Creating directory: %s\n", path);
-				int ret = mkdirx(path, 0755);
+				int ret = prepdir(path);
 				*last = '/';
 
-				ERRIF (ret) return ret;
+				if (ret) return ret;
 			}
 			last = new;
 		}
@@ -66,38 +78,48 @@ void process_file(char *in, char *out) {
 	}
 }
 
-void process(const char *in, const char *out, const char *subpath, unsigned char type_hint, bool top) {
+void process(const char *in, const char *out, const char *subpath, unsigned char type_hint, int top) {
 	char *in_full = combine_path(in, subpath);
 	char *out_full = combine_path(out, subpath);
 
 	if (type_hint == DT_UNKNOWN || type_hint == DT_LNK) {
 		struct stat statbuf;
-		ERRIF (statx(in_full, &statbuf)) goto out_free;
+		if (stat(in_full, &statbuf)) {
+			error("Cannot stat %s: %s", in_full, strerror(errno));
+			goto out_free;
+		}
 		if (S_ISDIR(statbuf.st_mode)) {
 			type_hint = DT_DIR;
 		}
 	}
 
 	if (top) {
-		ERRIF (mkdir_rec(out_full, strlen(out))) goto out_free;
+		if (prepdir_rec(out_full, strlen(out))) goto out_free;
 	}
 
 	if (type_hint == DT_DIR) {
-		DIR *d = opendirx(in_full);
-		ERRIF (!d) goto out_free;
-
-		printf("Creating directory: %s\n", out_full);
-		ERRIF (mkdirx(out_full, 0755)) goto out_closedirx;
-
-		struct dirent *de;
-		while ((de = readdirx(d, in_full))) {
-			if (strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
-				process(in_full, out_full, de->d_name, de->d_type, false);
-			}
+		DIR *d = opendir(in_full);
+		if (!d) {
+			error("Cannot open dir %s: %s", in_full, strerror(errno));
+			goto out_free;
 		}
 
-out_closedirx:
-		closedirx(d, in_full);
+		if (prepdir(out_full)) goto out_closedir;
+
+		struct dirent *de;
+		while ((errno = 0) || (de = readdir(d))) {
+			if (strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
+				process(in_full, out_full, de->d_name, de->d_type, 0);
+			}
+		}
+		if (errno) {
+			error("Cannot read dir %s: %s", in_full, strerror(errno));
+		}
+
+out_closedir:
+		if (closedir(d)) {
+			error("Cannot close dir %s: %s", in_full, strerror(errno));
+		}
 	} else {
 		process_file(in_full, out_full);
 	}
@@ -135,7 +157,7 @@ int main(int argc, char **argv) {
 	}
 
 	while (*argv) {
-		process(in, out, *argv++, DT_UNKNOWN, true);
+		process(in, out, *argv++, DT_UNKNOWN, 1);
 	}
 
 	return return_code;
