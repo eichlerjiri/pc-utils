@@ -1,0 +1,61 @@
+#include "common.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <errno.h>
+
+void process(char *filename) {
+	FILE *input = fopen(filename, "r");
+	if (!input) {
+		error("Cannot open %s: %s", filename, strerror(errno));
+		return;
+	}
+
+	unsigned long long linenum = 0;
+	char *lineptr = NULL;
+	size_t n = 0;
+	while (getlinex(&lineptr, &n, input) >= 0) {
+		linenum++;
+
+		int nonascii = 0;
+		for (char *c = lineptr; *c; c++) {
+			if (*c < 0) {
+				nonascii = 1;
+			} else if (*c == '\n' || (*c == '\r' && *(c + 1) == '\n')) {
+				*c = '\0';
+			}
+		}
+		if (nonascii) {
+			char *conv = iconvx("utf8", "utf8", lineptr);
+			if (conv) {
+				printf("%s: line %llu utf8: %s\n", filename, linenum, conv);
+			} else {
+				conv = iconvx("latin1", "utf8", lineptr);
+				printf("%s: line %llu latin1: %s\n", filename, linenum, conv);
+			}
+			free(conv);
+		}
+	}
+	if (errno) {
+		error("Cannot read %s: %s", filename, strerror(errno));
+	}
+
+	free(lineptr);
+	if (fclose(input)) {
+		error("Cannot close %s: %s", filename, strerror(errno));
+	}
+}
+
+int main(int argc, char **argv) {
+	char *pname = *argv++;
+	if (!*argv) {
+		fprintf(stderr, "Usage: %s <input files>\n", pname);
+		return 3;
+	}
+
+	while (*argv) {
+		process(*argv++);
+	}
+
+	return return_code;
+}

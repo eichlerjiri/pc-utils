@@ -50,8 +50,7 @@ int prepdir_rec(char *path, size_t base_length) {
 void process_file(char *in, char *out) {
 	char *dot = strrchr(out, '.');
 	if (dot) {
-		if (!strcasecmp(dot, ".mp3")) {
-			strcpy(dot, ".mp3");
+		if (!strcasecmp(dot, ".mp3") || !strcasecmp(dot, ".m4a")) {
 			char p0[] = "ffmpeg";
 			char p1[] = "-y";
 			char p2[] = "-i";
@@ -62,7 +61,7 @@ void process_file(char *in, char *out) {
 			char p8[] = "-1";
 			char *params[] = {p0, p1, p2, in, p4, p5, p6, p7, p8, out, NULL};
 			execvpx_wait(p0, params);
-		} else if(!strcasecmp(dot, ".flac")) {
+		} else if(!strcasecmp(dot, ".flac") || !strcasecmp(dot, ".ape")) {
 			strcpy(dot, ".mp3");
 			char p0[] = "ffmpeg";
 			char p1[] = "-y";
