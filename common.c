@@ -1,6 +1,7 @@
 #include "common.h"
 #include <stdarg.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
@@ -33,7 +34,7 @@ void fatal(const char *msg, ...) {
 	exit(2);
 }
 
-void *mallocx(size_t size) {
+void *c_malloc(size_t size) {
 	void *ret = malloc(size);
 	if (!ret) {
 		fatal("Cannot malloc %lu: %s", size, strerror(errno));
@@ -41,7 +42,7 @@ void *mallocx(size_t size) {
 	return ret;
 }
 
-char* asprintfx(const char *fmt, ...) {
+char* c_asprintf(const char *fmt, ...) {
 	va_list valist;
 	va_start(valist, fmt);
 
@@ -54,7 +55,7 @@ char* asprintfx(const char *fmt, ...) {
 	return ret;
 }
 
-ssize_t getlinex(char **lineptr, size_t *n, FILE *stream) {
+ssize_t c_getline(char **lineptr, size_t *n, FILE *stream) {
 	errno = 0;
 	ssize_t ret = getline(lineptr, n, stream);
 
@@ -72,7 +73,7 @@ ssize_t getlinex(char **lineptr, size_t *n, FILE *stream) {
 	return ret;
 }
 
-int forkx() {
+int c_fork() {
 	int ret = fork();
 	if (ret < 0) {
 		fatal("Cannot fork: %s", strerror(errno));
@@ -80,7 +81,7 @@ int forkx() {
 	return ret;
 }
 
-void waitpidx(pid_t pid) {
+void c_waitpid(pid_t pid) {
 	int status;
 	if (waitpid(pid, &status, 0) <= 0) {
 		fatal("Cannot waitpid: %s", strerror(errno));
@@ -90,17 +91,17 @@ void waitpidx(pid_t pid) {
 	}
 }
 
-void execvpx_wait(const char *path, char *const argv[]) {
-	int pid = forkx();
+void c_execvp_wait(const char *path, char *const argv[]) {
+	int pid = c_fork();
 	if (pid) {
-		waitpidx(pid);
+		c_waitpid(pid);
 	} else {
 		execvp(path, argv);
 		fatal("Cannot execvp %s: %s", path, strerror(errno));
 	}
 }
 
-int iconv_closex(iconv_t cd) {
+int c_iconv_close(iconv_t cd) {
 	int ret = iconv_close(cd);
 	if (ret) {
 		fatal("Cannot iconv_close: %s", strerror(errno));
@@ -108,29 +109,38 @@ int iconv_closex(iconv_t cd) {
 	return ret;
 }
 
-char *iconvx(const char *from, const char *to, char *input) {
-	iconv_t cd = iconv_open(to, from);
-	if (cd == (iconv_t) -1) {
+iconv_t c_iconv_open(const char *to, const char *from) {
+	iconv_t ret = iconv_open(to, from);
+	if (ret == (iconv_t) -1) {
 		fatal("Cannot iconv_open %s => %s: %s", from, to, strerror(errno));
 	}
+	return ret;
+}
 
+char *c_iconv(const char *from, const char *to, char *input) {
 	size_t inbytesleft = strlen(input);
+	if (SIZE_MAX / 8 < inbytesleft) { // overflow check
+		errno = E2BIG;
+		return NULL;
+	}
+
 	size_t outbytesleft = inbytesleft * 4;
-	char *out = mallocx(outbytesleft + 1);
+	char *out = c_malloc(outbytesleft + 1);
 
 	char *inbuf = input;
 	char *outbuf = out;
 
+	iconv_t cd = c_iconv_open(to, from);
 	if (iconv(cd, &inbuf, &inbytesleft, &outbuf, &outbytesleft) == (size_t) -1) {
 		if (errno == EILSEQ || errno == EINVAL) {
-			iconv_closex(cd);
+			c_iconv_close(cd);
 			free(out);
 			return NULL;
 		}
 		fatal("Cannot iconv: %s", strerror(errno));
 	}
+	c_iconv_close(cd);
 
-	iconv_closex(cd);
 	*outbuf = '\0';
 	return out;
 }

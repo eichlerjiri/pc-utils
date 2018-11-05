@@ -11,7 +11,7 @@ char *combine_path(const char *dir, const char *file) {
 	if (dir[strlen(dir) - 1] != '/') {
 		sep = "/";
 	}
-	return asprintfx("%s%s%s", dir, sep, file);
+	return c_asprintf("%s%s%s", dir, sep, file);
 }
 
 int prepdir(const char *pathname) {
@@ -60,7 +60,7 @@ void process_file(char *in, char *out) {
 			char p7[] = "-map_metadata";
 			char p8[] = "-1";
 			char *params[] = {p0, p1, p2, in, p4, p5, p6, p7, p8, out, NULL};
-			execvpx_wait(p0, params);
+			c_execvp_wait(p0, params);
 		} else if(!strcasecmp(dot, ".flac") || !strcasecmp(dot, ".ape")) {
 			strcpy(dot, ".mp3");
 			char p0[] = "ffmpeg";
@@ -72,7 +72,7 @@ void process_file(char *in, char *out) {
 			char p7[] = "-map_metadata";
 			char p8[] = "-1";
 			char *params[] = {p0, p1, p2, in, p4, p5, p6, p7, p8, out, NULL};
-			execvpx_wait(p0, params);
+			c_execvp_wait(p0, params);
 		}
 	}
 }

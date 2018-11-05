@@ -14,7 +14,7 @@ void process(char *filename) {
 	unsigned long long linenum = 0;
 	char *lineptr = NULL;
 	size_t n = 0;
-	while (getlinex(&lineptr, &n, input) >= 0) {
+	while (c_getline(&lineptr, &n, input) >= 0) {
 		linenum++;
 
 		int nonascii = 0;
@@ -26,11 +26,11 @@ void process(char *filename) {
 			}
 		}
 		if (nonascii) {
-			char *conv = iconvx("utf8", "utf8", lineptr);
+			char *conv = c_iconv("utf8", "utf8", lineptr);
 			if (conv) {
 				printf("%s: line %llu utf8: %s\n", filename, linenum, conv);
 			} else {
-				conv = iconvx("latin1", "utf8", lineptr);
+				conv = c_iconv("latin1", "utf8", lineptr);
 				printf("%s: line %llu latin1: %s\n", filename, linenum, conv);
 			}
 			free(conv);

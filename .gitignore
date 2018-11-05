@@ -1,3 +1,4 @@
+/*.o
 /keystroke-counter
 /port-audio
-*.o
+/print-non-ascii
