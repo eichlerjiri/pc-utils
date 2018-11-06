@@ -124,8 +124,8 @@ out_closedir:
 	}
 
 out_free:
-	free(in_full);
-	free(out_full);
+	c_free(in_full);
+	c_free(out_full);
 }
 
 int main(int argc, char **argv) {

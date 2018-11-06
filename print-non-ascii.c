@@ -33,14 +33,14 @@ void process(char *filename) {
 				conv = c_iconv("latin1", "utf8", lineptr);
 				printf("%s: line %llu latin1: %s\n", filename, linenum, conv);
 			}
-			free(conv);
+			c_free(conv);
 		}
 	}
 	if (errno) {
 		error("Cannot read %s: %s", filename, strerror(errno));
 	}
 
-	free(lineptr);
+	c_free(lineptr);
 	if (fclose(input)) {
 		error("Cannot close %s: %s", filename, strerror(errno));
 	}

@@ -1,4 +1,7 @@
 #include "common.h"
+#if ENABLE_TRACE
+#include "trace.h"
+#endif
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -39,10 +42,13 @@ void *c_malloc(size_t size) {
 	if (!ret) {
 		fatal("Cannot malloc %lu: %s", size, strerror(errno));
 	}
+#if ENABLE_TRACE
+	trace_start("MEM", ret, "malloc");
+#endif
 	return ret;
 }
 
-char* c_asprintf(const char *fmt, ...) {
+char *c_asprintf(const char *fmt, ...) {
 	va_list valist;
 	va_start(valist, fmt);
 
@@ -50,12 +56,29 @@ char* c_asprintf(const char *fmt, ...) {
 	if (vasprintf(&ret, fmt, valist) < 0) {
 		fatal("Cannot asprintf %s: %s", fmt, strerror(errno));
 	}
+#if ENABLE_TRACE
+	trace_start("MEM", ret, "asprintf");
+#endif
 
 	va_end(valist);
 	return ret;
 }
 
+char *c_strdup(const char *s) {
+	char *ret = strdup(s);
+	if (!ret) {
+		fatal("Cannot strdup %s", strerror(errno));
+	}
+#if ENABLE_TRACE
+	trace_start("MEM", ret, "strdup");
+#endif
+	return ret;
+}
+
 ssize_t c_getline(char **lineptr, size_t *n, FILE *stream) {
+#if ENABLE_TRACE
+	char *origptr = *lineptr;
+#endif
 	errno = 0;
 	ssize_t ret = getline(lineptr, n, stream);
 
@@ -69,8 +92,25 @@ ssize_t c_getline(char **lineptr, size_t *n, FILE *stream) {
 			}
 		}
 	}
+#if ENABLE_TRACE
+	if (origptr != *lineptr) {
+		if (origptr) {
+			trace_end("MEM", origptr, "getline");
+		}
+		trace_start("MEM", *lineptr, "getline");
+	}
+#endif
 
 	return ret;
+}
+
+void c_free(void *ptr) {
+#if ENABLE_TRACE
+	if (ptr) {
+		trace_end("MEM", ptr, "free");
+	}
+#endif
+	free(ptr);
 }
 
 int c_fork() {
@@ -134,7 +174,7 @@ char *c_iconv(const char *from, const char *to, char *input) {
 	if (iconv(cd, &inbuf, &inbytesleft, &outbuf, &outbytesleft) == (size_t) -1) {
 		if (errno == EILSEQ || errno == EINVAL) {
 			c_iconv_close(cd);
-			free(out);
+			c_free(out);
 			return NULL;
 		}
 		fatal("Cannot iconv: %s", strerror(errno));
