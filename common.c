@@ -1,7 +1,5 @@
-#include "common.h"
-#if ENABLE_TRACE
-#include "trace.h"
-#endif
+#define _GNU_SOURCE
+#include <stdio.h>
 #include <stdarg.h>
 #include <stdlib.h>
 #include <stdint.h>
@@ -11,15 +9,20 @@
 #include <sys/wait.h>
 #include <iconv.h>
 
-int return_code;
+#if ENABLE_TRACE
+#include "trace.c"
+#endif
 
-void verror(const char *msg, va_list valist) {
+static int return_code;
+static const char* errno_msg;
+
+static void verror(const char *msg, va_list valist) {
 	fprintf(stderr, "\033[91m");
 	vfprintf(stderr, msg, valist);
 	fprintf(stderr, "\033[0m\n");
 }
 
-void error(const char *msg, ...) {
+static void error(const char *msg, ...) {
 	va_list valist;
 	va_start(valist, msg);
 	verror(msg, valist);
@@ -28,7 +31,7 @@ void error(const char *msg, ...) {
 	return_code = 1;
 }
 
-void fatal(const char *msg, ...) {
+static void fatal(const char *msg, ...) {
 	va_list valist;
 	va_start(valist, msg);
 	verror(msg, valist);
@@ -37,10 +40,18 @@ void fatal(const char *msg, ...) {
 	exit(2);
 }
 
-void *c_malloc(size_t size) {
+static const char *c_strerror(int errnum) {
+	if (errnum == 1234) {
+		return errno_msg;
+	} else {
+		return strerror(errnum);
+	}
+}
+
+static void *c_malloc(size_t size) {
 	void *ret = malloc(size);
 	if (!ret) {
-		fatal("Cannot malloc %lu: %s", size, strerror(errno));
+		fatal("Cannot malloc %lu: %s", size, c_strerror(errno));
 	}
 #if ENABLE_TRACE
 	trace_start("MEM", ret, "malloc");
@@ -48,13 +59,13 @@ void *c_malloc(size_t size) {
 	return ret;
 }
 
-char *c_asprintf(const char *fmt, ...) {
+static char *c_asprintf(const char *fmt, ...) {
 	va_list valist;
 	va_start(valist, fmt);
 
 	char *ret;
 	if (vasprintf(&ret, fmt, valist) < 0) {
-		fatal("Cannot asprintf %s: %s", fmt, strerror(errno));
+		fatal("Cannot asprintf %s: %s", fmt, c_strerror(errno));
 	}
 #if ENABLE_TRACE
 	trace_start("MEM", ret, "asprintf");
@@ -64,10 +75,10 @@ char *c_asprintf(const char *fmt, ...) {
 	return ret;
 }
 
-char *c_strdup(const char *s) {
+static char *c_strdup(const char *s) {
 	char *ret = strdup(s);
 	if (!ret) {
-		fatal("Cannot strdup %s", strerror(errno));
+		fatal("Cannot strdup %s", c_strerror(errno));
 	}
 #if ENABLE_TRACE
 	trace_start("MEM", ret, "strdup");
@@ -75,7 +86,7 @@ char *c_strdup(const char *s) {
 	return ret;
 }
 
-ssize_t c_getline(char **lineptr, size_t *n, FILE *stream) {
+static ssize_t c_getline(char **lineptr, size_t *n, FILE *stream) {
 #if ENABLE_TRACE
 	char *origptr = *lineptr;
 #endif
@@ -83,12 +94,13 @@ ssize_t c_getline(char **lineptr, size_t *n, FILE *stream) {
 	ssize_t ret = getline(lineptr, n, stream);
 
 	if (ret < 0 && errno == ENOMEM) {
-		fatal("Cannot getline: %s", strerror(errno));
+		fatal("Cannot getline: %s", c_strerror(errno));
 	} else if (ret > 0) {
 		for (char *c = *lineptr; c < *lineptr + ret; c++) {
 			if (!*c) {
-				errno = EILSEQ;
-				return -2;
+				errno = 1234;
+				errno_msg = "Input contains NULL byte";
+				return -1;
 			}
 		}
 	}
@@ -104,7 +116,7 @@ ssize_t c_getline(char **lineptr, size_t *n, FILE *stream) {
 	return ret;
 }
 
-void c_free(void *ptr) {
+static void c_free(void *ptr) {
 #if ENABLE_TRACE
 	if (ptr) {
 		trace_end("MEM", ptr, "free");
@@ -113,54 +125,55 @@ void c_free(void *ptr) {
 	free(ptr);
 }
 
-int c_fork() {
+static int c_fork() {
 	int ret = fork();
 	if (ret < 0) {
-		fatal("Cannot fork: %s", strerror(errno));
+		fatal("Cannot fork: %s", c_strerror(errno));
 	}
 	return ret;
 }
 
-void c_waitpid(pid_t pid) {
+static void c_waitpid(pid_t pid) {
 	int status;
 	if (waitpid(pid, &status, 0) <= 0) {
-		fatal("Cannot waitpid: %s", strerror(errno));
+		fatal("Cannot waitpid: %s", c_strerror(errno));
 	}
 	if (status) {
 		fatal("Subprocess exited with code %i", status);
 	}
 }
 
-void c_execvp_wait(const char *path, char *const argv[]) {
+static void c_execvp_wait(const char *path, char *const argv[]) {
 	int pid = c_fork();
 	if (pid) {
 		c_waitpid(pid);
 	} else {
 		execvp(path, argv);
-		fatal("Cannot execvp %s: %s", path, strerror(errno));
+		fatal("Cannot execvp %s: %s", path, c_strerror(errno));
 	}
 }
 
-int c_iconv_close(iconv_t cd) {
+static int c_iconv_close(iconv_t cd) {
 	int ret = iconv_close(cd);
 	if (ret) {
-		fatal("Cannot iconv_close: %s", strerror(errno));
+		fatal("Cannot iconv_close: %s", c_strerror(errno));
 	}
 	return ret;
 }
 
-iconv_t c_iconv_open(const char *to, const char *from) {
+static iconv_t c_iconv_open(const char *to, const char *from) {
 	iconv_t ret = iconv_open(to, from);
 	if (ret == (iconv_t) -1) {
-		fatal("Cannot iconv_open %s => %s: %s", from, to, strerror(errno));
+		fatal("Cannot iconv_open %s => %s: %s", from, to, c_strerror(errno));
 	}
 	return ret;
 }
 
-char *c_iconv(const char *from, const char *to, char *input) {
+static char *c_iconv(const char *from, const char *to, char *input) {
 	size_t inbytesleft = strlen(input);
 	if (SIZE_MAX / 8 < inbytesleft) { // overflow check
-		errno = E2BIG;
+		errno = 1234;
+		errno_msg = "Input is too long";
 		return NULL;
 	}
 
@@ -177,7 +190,7 @@ char *c_iconv(const char *from, const char *to, char *input) {
 			c_free(out);
 			return NULL;
 		}
-		fatal("Cannot iconv: %s", strerror(errno));
+		fatal("Cannot iconv: %s", c_strerror(errno));
 	}
 	c_iconv_close(cd);
 

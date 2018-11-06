@@ -1,8 +1,4 @@
-#include "common.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
+#include "common.c"
 #include <linux/input.h>
 
 int main(int argc, char **argv) {
@@ -20,7 +16,7 @@ int main(int argc, char **argv) {
 
 	FILE *input = fopen(filename, "r");
 	if (!input) {
-		fatal("Cannot open %s: %s", filename, strerror(errno));
+		fatal("Cannot open %s: %s", filename, c_strerror(errno));
 	}
 
 	unsigned long long count = 0;
@@ -35,11 +31,11 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (ferror(input)) {
-		fatal("Cannot read %s: %s", filename, strerror(errno));
+		fatal("Cannot read %s: %s", filename, c_strerror(errno));
 	}
 
 	if (fclose(input)) {
-		fatal("Cannot close %s: %s", filename, strerror(errno));
+		fatal("Cannot close %s: %s", filename, c_strerror(errno));
 	}
 	return return_code;
 }

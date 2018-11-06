@@ -1,12 +1,8 @@
-#include "common.h"
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
-#include <errno.h>
+#include "common.c"
 #include <sys/stat.h>
 #include <dirent.h>
 
-char *combine_path(const char *dir, const char *file) {
+static char *combine_path(const char *dir, const char *file) {
 	const char *sep = "";
 	if (dir[strlen(dir) - 1] != '/') {
 		sep = "/";
@@ -14,18 +10,18 @@ char *combine_path(const char *dir, const char *file) {
 	return c_asprintf("%s%s%s", dir, sep, file);
 }
 
-int prepdir(const char *pathname) {
+static int prepdir(const char *pathname) {
 	printf("Creating directory: %s\n", pathname);
 
 	int ret = mkdir(pathname, 0755);
 	if (ret && errno != EEXIST) {
-		error("Cannot create directory %s: %s", pathname, strerror(errno));
+		error("Cannot create directory %s: %s", pathname, c_strerror(errno));
 		return ret;
 	}
 	return 0;
 }
 
-int prepdir_rec(char *path, size_t base_length) {
+static int prepdir_rec(char *path, size_t base_length) {
 	char *cur = path + base_length;
 	char *last = NULL;
 
@@ -47,7 +43,7 @@ int prepdir_rec(char *path, size_t base_length) {
 	return 0;
 }
 
-void process_file(char *in, char *out) {
+static void process_file(char *in, char *out) {
 	char *dot = strrchr(out, '.');
 	if (dot) {
 		if (!strcasecmp(dot, ".mp3") || !strcasecmp(dot, ".m4a")) {
@@ -77,14 +73,14 @@ void process_file(char *in, char *out) {
 	}
 }
 
-void process(const char *in, const char *out, const char *subpath, unsigned char type_hint, int top) {
+static void process(const char *in, const char *out, const char *subpath, unsigned char type_hint, int top) {
 	char *in_full = combine_path(in, subpath);
 	char *out_full = combine_path(out, subpath);
 
 	if (type_hint == DT_UNKNOWN || type_hint == DT_LNK) {
 		struct stat statbuf;
 		if (stat(in_full, &statbuf)) {
-			error("Cannot stat %s: %s", in_full, strerror(errno));
+			error("Cannot stat %s: %s", in_full, c_strerror(errno));
 			goto out_free;
 		}
 		if (S_ISDIR(statbuf.st_mode)) {
@@ -99,7 +95,7 @@ void process(const char *in, const char *out, const char *subpath, unsigned char
 	if (type_hint == DT_DIR) {
 		DIR *d = opendir(in_full);
 		if (!d) {
-			error("Cannot open dir %s: %s", in_full, strerror(errno));
+			error("Cannot open dir %s: %s", in_full, c_strerror(errno));
 			goto out_free;
 		}
 
@@ -112,12 +108,12 @@ void process(const char *in, const char *out, const char *subpath, unsigned char
 			}
 		}
 		if (errno) {
-			error("Cannot read dir %s: %s", in_full, strerror(errno));
+			error("Cannot read dir %s: %s", in_full, c_strerror(errno));
 		}
 
 out_closedir:
 		if (closedir(d)) {
-			error("Cannot close dir %s: %s", in_full, strerror(errno));
+			error("Cannot close dir %s: %s", in_full, c_strerror(errno));
 		}
 	} else {
 		process_file(in_full, out_full);

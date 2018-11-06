@@ -1,10 +1,7 @@
-#include "common.h"
-#include "hmap.h"
-#include <stdio.h>
-#include <string.h>
-#include <errno.h>
+#include "common.c"
+#include "hmap.c"
 
-size_t hash_str(const void* key) {
+static size_t hash_str(const void* key) {
 	const unsigned char* str = key;
 	size_t ret = 31u;
 	while (*str) {
@@ -13,7 +10,7 @@ size_t hash_str(const void* key) {
 	return ret;
 }
 
-int equals_str(const void* key1, const void* key2) {
+static int equals_str(const void* key1, const void* key2) {
 	const char* str1 = key1;
 	const char* str2 = key2;
 	return !strcmp(str1, str2);
@@ -34,7 +31,7 @@ int main(int argc, char **argv) {
 
 	FILE *input = fopen(filename, "r");
 	if (!input) {
-		fatal("Cannot open %s: %s", filename, strerror(errno));
+		fatal("Cannot open %s: %s", filename, c_strerror(errno));
 	}
 
 	struct hmap map;
@@ -72,7 +69,7 @@ int main(int argc, char **argv) {
 		}
 	}
 	if (errno) {
-		fatal("Cannot read %s: %s", filename, strerror(errno));
+		fatal("Cannot read %s: %s", filename, c_strerror(errno));
 	}
 
 	if (map.size) {
@@ -92,7 +89,7 @@ int main(int argc, char **argv) {
 	hmap_destroy(&map);
 	c_free(lineptr);
 	if (fclose(input)) {
-		fatal("Cannot close %s: %s", filename, strerror(errno));
+		fatal("Cannot close %s: %s", filename, c_strerror(errno));
 	}
 	return return_code;
 }

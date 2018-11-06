@@ -1,13 +1,9 @@
-#include "common.h"
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <errno.h>
+#include "common.c"
 
-void process(char *filename) {
+static void process(char *filename) {
 	FILE *input = fopen(filename, "r");
 	if (!input) {
-		error("Cannot open %s: %s", filename, strerror(errno));
+		error("Cannot open %s: %s", filename, c_strerror(errno));
 		return;
 	}
 
@@ -37,12 +33,12 @@ void process(char *filename) {
 		}
 	}
 	if (errno) {
-		error("Cannot read %s: %s", filename, strerror(errno));
+		error("Cannot read %s: %s", filename, c_strerror(errno));
 	}
 
 	c_free(lineptr);
 	if (fclose(input)) {
-		error("Cannot close %s: %s", filename, strerror(errno));
+		error("Cannot close %s: %s", filename, c_strerror(errno));
 	}
 }
 
