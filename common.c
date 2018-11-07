@@ -59,6 +59,22 @@ static void *c_malloc(size_t size) {
 	return ret;
 }
 
+static void *c_realloc(void *ptr, size_t size) {
+	void *ret = realloc(ptr, size);
+	if (!ret) {
+		fatal("Cannot realloc %li: %s", size, strerror(errno));
+	}
+#if ENABLE_TRACE
+	if (ptr != ret) {
+		if (ptr) {
+			trace_end("MEM", ptr, "realloc");
+		}
+		trace_start("MEM", ret, "realloc");
+	}
+#endif
+	return ret;
+}
+
 static char *c_asprintf(const char *fmt, ...) {
 	va_list valist;
 	va_start(valist, fmt);
@@ -112,7 +128,14 @@ static ssize_t c_getline(char **lineptr, size_t *n, FILE *stream) {
 		trace_start("MEM", *lineptr, "getline");
 	}
 #endif
+	return ret;
+}
 
+static ssize_t ce_getline(char **lineptr, size_t *n, FILE *stream) {
+	ssize_t ret = c_getline(lineptr, n, stream);
+	if (ret < 0 && errno) {
+		fatal("Cannot getline: %s", c_strerror(errno));
+	}
 	return ret;
 }
 
@@ -196,4 +219,52 @@ static char *c_iconv(const char *from, const char *to, char *input) {
 
 	*outbuf = '\0';
 	return out;
+}
+
+static int c_mkstemps(char *template, int suffixlen) {
+	int ret = mkstemps(template, suffixlen);
+	if (!ret) {
+		fatal("Cannot mkstemps: %s", c_strerror(errno));
+	}
+	return ret;
+}
+
+static FILE *c_fopen(const char *pathname, const char *mode) {
+	FILE *ret = fopen(pathname, mode);
+	if (!ret) {
+		fatal("Cannot fopen: %s", c_strerror(errno));
+	}
+	return ret;
+}
+
+static FILE *c_fdopen(int fd, const char *mode) {
+	FILE *ret = fdopen(fd, mode);
+	if (!ret) {
+		fatal("Cannot fdopen: %s", c_strerror(errno));
+	}
+	return ret;
+}
+
+static void c_fclose(FILE *stream) {
+	if (fclose(stream)) {
+		fatal("Cannot fclose: %s", c_strerror(errno));
+	}
+}
+
+static int c_fprintf(FILE *stream, const char *format, ...) {
+	va_list valist;
+	va_start(valist, format);
+	int ret = vfprintf(stream, format, valist);
+	va_end(valist);
+
+	if (ret < 0) {
+		fatal("Cannot fprintf: %s", c_strerror(errno));
+	}
+	return ret;
+}
+
+static void c_remove(const char *pathname) {
+	if (remove(pathname)) {
+		fatal("Cannot remove %s: %s", pathname, c_strerror(errno));
+	}
 }
