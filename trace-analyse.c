@@ -3,9 +3,9 @@
 
 static size_t hash_str(const void* key) {
 	const unsigned char* str = key;
-	size_t ret = 31u;
+	size_t ret = 1u;
 	while (*str) {
-		ret *= 31u * (*str++);
+		ret = 31u * ret + *str++;
 	}
 	return ret;
 }
@@ -75,13 +75,16 @@ int main(int argc, char **argv) {
 	if (map.size) {
 		printf("Remaining:\n");
 		for (int i = 0; i < map.capacity; i++) {
-			struct hmap_item *item = map.data + i;
-			while (item->key) {
+			struct hmap_item **link = map.data + i;
+			struct hmap_item *item;
+			while ((item = *link)) {
 				char *key = item->key;
 				char *value = item->value;
 				printf("\t%s %s\n", key, value);
 
-				hmap_remove_direct(&map, NULL, item);
+				struct hmap_item **next = &item->next;
+				hmap_remove_direct(&map, link);
+				link = next;
 			}
 		}
 	}

@@ -1,5 +1,6 @@
 #include "common.c"
 #include "alist.c"
+#include <ctype.h>
 
 static void replace_char(char *str, char from, char to) {
 	while (*str) {
@@ -8,6 +9,25 @@ static void replace_char(char *str, char from, char to) {
 		}
 		str++;
 	}
+}
+
+static void trim(char *str) {
+	char *pos = str;
+	char *end = str;
+	int some = 0;
+	while (*pos) {
+		if (!isspace(*pos)) {
+			end = str + 1;
+			some = 1;
+		}
+
+		if (some) {
+			*str = *pos;
+			str++;
+		}
+		pos++;
+	}
+	*end = '\0';
 }
 
 static void free_list(struct alist *list) {
@@ -48,7 +68,7 @@ int main(int argc, char **argv) {
 	size_t n = 0;
 	while (ce_getline(&lineptr, &n, tmp) >= 0) {
 		char *line = c_strdup(lineptr);
-		replace_char(line, '\n', '\0');
+		trim(line);
 		alist_add(&list, line);
 	}
 	c_free(lineptr);
