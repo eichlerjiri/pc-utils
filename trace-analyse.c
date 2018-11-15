@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
 	char function[100];
 	char buffer[200];
 
-	unsigned long long linenum = 0;
+	unsigned long linenum = 0;
 	char *lineptr = NULL;
 	size_t n = 0;
 	while (c_getline(&lineptr, &n, input) >= 0) {
@@ -56,13 +56,13 @@ int main(int argc, char **argv) {
 		sprintf(buffer, "%s %s", type, address);
 		if (flag[0] == 'A') {
 			if (hmap_get(&map, buffer)) {
-				printf("Line %llu: Repeated alloc: %s %s\n", linenum, buffer, function);
+				printf("Line %lu: Repeated alloc: %s %s\n", linenum, buffer, function);
 			} else {
 				hmap_put(&map, c_strdup(buffer), c_strdup(function));
 			}
 		} else {
 			if (!hmap_get(&map, buffer)) {
-				printf("Line %llu: Free before alloc: %s %s\n", linenum, buffer, function);
+				printf("Line %lu: Free before alloc: %s %s\n", linenum, buffer, function);
 			} else {
 				hmap_remove(&map, buffer);
 			}

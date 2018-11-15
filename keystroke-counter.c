@@ -19,7 +19,7 @@ int main(int argc, char **argv) {
 		fatal("Cannot open %s: %s", filename, c_strerror(errno));
 	}
 
-	unsigned long long count = 0;
+	unsigned long count = 0;
 
 	struct input_event ev;
 	while (fread(&ev, sizeof(ev), 1, input)) {
@@ -27,7 +27,7 @@ int main(int argc, char **argv) {
 		ev.code != 42 && ev.code != 29 && ev.code != 125 && // L-shift, L-ctrl, L-win
 		ev.code != 56 && ev.code != 100 && ev.code != 54 && ev.code != 97) { // L-alt, R-alt, R-shift, R-ctrl
 			count++;
-			printf("%llu\n", count);
+			printf("%lu\n", count);
 		}
 	}
 	if (ferror(input)) {

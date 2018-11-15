@@ -8,6 +8,7 @@
 #include <unistd.h>
 #include <sys/wait.h>
 #include <iconv.h>
+#include <regex.h>
 
 #if ENABLE_TRACE
 #include "trace.c"
@@ -194,12 +195,6 @@ static iconv_t c_iconv_open(const char *to, const char *from) {
 
 static char *c_iconv(const char *from, const char *to, char *input) {
 	size_t inbytesleft = strlen(input);
-	if (SIZE_MAX / 8 < inbytesleft) { // overflow check
-		errno = 1234;
-		errno_msg = "Input is too long";
-		return NULL;
-	}
-
 	size_t outbytesleft = inbytesleft * 4;
 	char *out = c_malloc(outbytesleft + 1);
 
@@ -266,5 +261,14 @@ static int c_fprintf(FILE *stream, const char *format, ...) {
 static void c_remove(const char *pathname) {
 	if (remove(pathname)) {
 		fatal("Cannot remove %s: %s", pathname, c_strerror(errno));
+	}
+}
+
+static void c_regcomp(regex_t *preg, const char *regex) {
+	int code = regcomp(preg, regex, REG_EXTENDED);
+	if (code) {
+		char buffer[256];
+		regerror(code, preg, buffer, sizeof(buffer));
+		fatal("Cannot compile regex %s: %s", regex, buffer);
 	}
 }
