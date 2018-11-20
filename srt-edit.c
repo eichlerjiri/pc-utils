@@ -46,7 +46,7 @@ static void process(const char *filename, long from, long to, int rewrite, long 
 	unsigned long linenum = 0;
 	char *s = NULL;
 	size_t n = 0;
-	while (c_getline(&s, &n, input) >= 0) {
+	while (c_getline_tryin(&s, &n, input) >= 0) {
 		linenum++;
 
 		if (regexec(&reg1, s, 3, m, 0)) {

@@ -63,7 +63,7 @@ static void *c_malloc(size_t size) {
 static void *c_realloc(void *ptr, size_t size) {
 	void *ret = realloc(ptr, size);
 	if (!ret) {
-		fatal("Cannot realloc %li: %s", size, strerror(errno));
+		fatal("Cannot realloc %li: %s", size, c_strerror(errno));
 	}
 #if ENABLE_TRACE
 	if (ptr != ret) {
@@ -103,7 +103,7 @@ static char *c_strdup(const char *s) {
 	return ret;
 }
 
-static ssize_t c_getline(char **lineptr, size_t *n, FILE *stream) {
+static ssize_t c_getline_tryin(char **lineptr, size_t *n, FILE *stream) {
 #if ENABLE_TRACE
 	char *origptr = *lineptr;
 #endif
@@ -132,8 +132,8 @@ static ssize_t c_getline(char **lineptr, size_t *n, FILE *stream) {
 	return ret;
 }
 
-static ssize_t ce_getline(char **lineptr, size_t *n, FILE *stream) {
-	ssize_t ret = c_getline(lineptr, n, stream);
+static ssize_t c_getline(char **lineptr, size_t *n, FILE *stream) {
+	ssize_t ret = c_getline_tryin(lineptr, n, stream);
 	if (ret < 0 && errno) {
 		fatal("Cannot getline: %s", c_strerror(errno));
 	}
@@ -193,7 +193,7 @@ static iconv_t c_iconv_open(const char *to, const char *from) {
 	return ret;
 }
 
-static char *c_iconv(const char *from, const char *to, char *input) {
+static char *c_iconv_tryin(const char *from, const char *to, char *input) {
 	size_t inbytesleft = strlen(input);
 	size_t outbytesleft = inbytesleft * 4;
 	char *out = c_malloc(outbytesleft + 1);

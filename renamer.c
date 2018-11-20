@@ -66,7 +66,7 @@ int main(int argc, char **argv) {
 
 	char *lineptr = NULL;
 	size_t n = 0;
-	while (ce_getline(&lineptr, &n, tmp) >= 0) {
+	while (c_getline(&lineptr, &n, tmp) >= 0) {
 		char *line = c_strdup(lineptr);
 		trim(line);
 		alist_add(&list, line);

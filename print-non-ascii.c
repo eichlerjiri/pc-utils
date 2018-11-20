@@ -10,7 +10,7 @@ static void process(char *filename) {
 	unsigned long linenum = 0;
 	char *lineptr = NULL;
 	size_t n = 0;
-	while (c_getline(&lineptr, &n, input) >= 0) {
+	while (c_getline_tryin(&lineptr, &n, input) >= 0) {
 		linenum++;
 
 		int nonascii = 0;
@@ -22,11 +22,11 @@ static void process(char *filename) {
 			}
 		}
 		if (nonascii) {
-			char *conv = c_iconv("utf8", "utf8", lineptr);
+			char *conv = c_iconv_tryin("utf8", "utf8", lineptr);
 			if (conv) {
 				printf("%s: line %lu utf8: %s\n", filename, linenum, conv);
 			} else {
-				conv = c_iconv("latin1", "utf8", lineptr);
+				conv = c_iconv_tryin("latin1", "utf8", lineptr);
 				printf("%s: line %lu latin1: %s\n", filename, linenum, conv);
 			}
 			c_free(conv);

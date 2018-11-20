@@ -46,7 +46,7 @@ int main(int argc, char **argv) {
 	unsigned long linenum = 0;
 	char *lineptr = NULL;
 	size_t n = 0;
-	while (c_getline(&lineptr, &n, input) >= 0) {
+	while (c_getline_tryin(&lineptr, &n, input) >= 0) {
 		linenum++;
 		if (sscanf(lineptr, "%99s %99s %99s %99s", flag, type, address, function) != 4 ||
 		(flag[0] != 'A' && flag[0] != 'F')) {
