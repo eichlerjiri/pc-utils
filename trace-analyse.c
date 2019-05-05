@@ -20,19 +20,15 @@ int main(int argc, char **argv) {
 	char *pname = *argv++;
 	if (!*argv) {
 		fprintf(stderr, "Usage: %s <trace.txt file>\n", pname);
-		return 3;
+		return 2;
 	}
 
 	char *filename = *argv++;
-
 	if (*argv) {
 		fatal("Too many arguments");
 	}
 
-	FILE *input = fopen(filename, "r");
-	if (!input) {
-		fatal("Cannot open %s: %s", filename, c_strerror(errno));
-	}
+	FILE *input = c_fopen(filename, "r");
 
 	struct hmap map;
 	hmap_init(&map, hash_str, equals_str);
@@ -46,53 +42,52 @@ int main(int argc, char **argv) {
 	unsigned long linenum = 0;
 	char *lineptr = NULL;
 	size_t n = 0;
-	while (c_getline_tryin(&lineptr, &n, input) >= 0) {
+	while (c_getline_nonull(&lineptr, &n, input) != -1) {
 		linenum++;
-		if (sscanf(lineptr, "%99s %99s %99s %99s", flag, type, address, function) != 4 ||
-		(flag[0] != 'A' && flag[0] != 'F')) {
-			fatal("Line %i: Invalid format", linenum);
+		if (sscanf(lineptr, "%99s %99s %99s %99s", flag, type, address, function) != 4
+		|| (flag[0] != 'A' && flag[0] != 'F')) {
+			fatal("Line %lu: Invalid format", linenum);
 		}
 
 		sprintf(buffer, "%s %s", type, address);
 		if (flag[0] == 'A') {
 			if (hmap_get(&map, buffer)) {
-				printf("Line %lu: Repeated alloc: %s %s\n", linenum, buffer, function);
+				c_printf("Line %lu: Repeated alloc: %s %s\n", linenum, buffer, function);
 			} else {
-				hmap_put(&map, c_strdup(buffer), c_strdup(function));
+				hmap_put(&map, c_strdup(buffer), c_strdup(function), NULL, NULL);
 			}
 		} else {
 			if (!hmap_get(&map, buffer)) {
-				printf("Line %lu: Free before alloc: %s %s\n", linenum, buffer, function);
+				c_printf("Line %lu: Free before alloc: %s %s\n", linenum, buffer, function);
 			} else {
-				hmap_remove(&map, buffer);
+				void *rkey = NULL;
+				void *rvalue = NULL;
+				hmap_remove(&map, buffer, &rkey, &rvalue);
+				c_free(rkey);
+				c_free(rvalue);
 			}
 		}
 	}
-	if (errno) {
-		fatal("Cannot read %s: %s", filename, c_strerror(errno));
-	}
 
 	if (map.size) {
-		printf("Remaining:\n");
+		c_printf("Remaining:\n");
 		for (int i = 0; i < map.capacity; i++) {
-			struct hmap_item **link = map.data + i;
-			struct hmap_item *item;
-			while ((item = *link)) {
+			struct hmap_item *item = map.data[i];
+			while (item) {
 				char *key = item->key;
 				char *value = item->value;
-				printf("\t%s %s\n", key, value);
+				c_printf("\t%s %s\n", key, value);
+				c_free(key);
+				c_free(value);
 
-				struct hmap_item **next = &item->next;
-				hmap_remove_direct(&map, link);
-				link = next;
+				item = item->next;
 			}
 		}
 	}
 
 	hmap_destroy(&map);
 	c_free(lineptr);
-	if (fclose(input)) {
-		fatal("Cannot close %s: %s", filename, c_strerror(errno));
-	}
-	return return_code;
+	c_fclose(input);
+	c_fflush(stdout);
+	return 0;
 }

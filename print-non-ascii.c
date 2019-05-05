@@ -1,57 +1,68 @@
 #include "common.c"
 
-static void process(char *filename) {
-	FILE *input = fopen(filename, "r");
-	if (!input) {
-		error("Cannot open %s: %s", filename, c_strerror(errno));
-		return;
+static int nonascii(char *in, size_t n) {
+	for (size_t i = 0; i < n; i++) {
+		if (in[i] < 0) {
+			return 1;
+		}
 	}
+	return 0;
+}
+
+static size_t iconv_full(const char *tocode, const char *fromcode, char *in, size_t inlen, char *out, size_t outlen) {
+	iconv_t cd = c_iconv_open(tocode, fromcode);
+	size_t ret = c_iconv_tryin(cd, in, inlen, out, outlen);
+	c_iconv_close(cd);
+	return ret;
+}
+
+static void process(char *filename) {
+	FILE *input = c_fopen(filename, "r");
 
 	unsigned long linenum = 0;
 	char *lineptr = NULL;
 	size_t n = 0;
-	while (c_getline_tryin(&lineptr, &n, input) >= 0) {
+	size_t linelen;
+	while ((linelen = (size_t) c_getline(&lineptr, &n, input)) != (size_t) -1) {
 		linenum++;
 
-		int nonascii = 0;
-		for (char *c = lineptr; *c; c++) {
-			if (*c < 0) {
-				nonascii = 1;
-			} else if (*c == '\n' || (*c == '\r' && *(c + 1) == '\n')) {
-				*c = '\0';
-			}
+		if (lineptr[linelen - 1] == '\n') {
+			linelen--;
 		}
-		if (nonascii) {
-			char *conv = c_iconv_tryin("utf8", "utf8", lineptr);
-			if (conv) {
-				printf("%s: line %lu utf8: %s\n", filename, linenum, conv);
-			} else {
-				conv = c_iconv_tryin("latin1", "utf8", lineptr);
-				printf("%s: line %lu latin1: %s\n", filename, linenum, conv);
+
+		if (nonascii(lineptr, linelen)) {
+			size_t outsize = linelen * 4;
+			char *out = c_malloc(outsize);
+
+			const char *code = "utf8";
+			size_t outlen = iconv_full("utf8", code, lineptr, linelen, out, outsize);
+			if (outlen == (size_t) -1) {
+				code = "latin1";
+				outlen = iconv_full("utf8", code, lineptr, linelen, out, outsize);
 			}
-			c_free(conv);
+
+			c_printf("%s: line %lu %s: ", filename, linenum, code);
+			c_fwrite(out, outlen, 1, stdout);
+			c_putchar('\n');
+			c_free(out);
 		}
-	}
-	if (errno) {
-		error("Cannot read %s: %s", filename, c_strerror(errno));
 	}
 
 	c_free(lineptr);
-	if (fclose(input)) {
-		error("Cannot close %s: %s", filename, c_strerror(errno));
-	}
+	c_fclose(input);
 }
 
 int main(int argc, char **argv) {
 	char *pname = *argv++;
 	if (!*argv) {
 		fprintf(stderr, "Usage: %s <input files>\n", pname);
-		return 3;
+		return 2;
 	}
 
 	while (*argv) {
 		process(*argv++);
 	}
 
-	return return_code;
+	c_fflush(stdout);
+	return 0;
 }

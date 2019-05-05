@@ -30,18 +30,11 @@ static void trim(char *str) {
 	*end = '\0';
 }
 
-static void free_list(struct alist *list) {
-	for (size_t i = 0; i < list->size; i++) {
-		c_free(list->data[i]);
-	}
-	alist_destroy(list);
-}
-
 int main(int argc, char **argv) {
 	char *pname = *argv++;
 	if (!*argv) {
 		fprintf(stderr, "Usage: %s <files to be renamed>\n", pname);
-		return 3;
+		return 2;
 	}
 
 	char tmpfilename[] = "/tmp/renamer XXXXXX.txt";
@@ -55,9 +48,14 @@ int main(int argc, char **argv) {
 
 	c_fclose(tmp);
 
-	char p0[] = "vim";
-	char *params[] = {p0, tmpfilename, NULL};
-	c_execvp_wait(p0, params);
+	int pid = c_fork();
+	if (pid) {
+		c_waitpid(pid);
+	} else {
+		char p0[] = "vim";
+		char *params[] = {p0, tmpfilename, NULL};
+		c_execvp(p0, params);
+	}
 
 	struct alist list;
 	alist_init(&list);
@@ -66,10 +64,9 @@ int main(int argc, char **argv) {
 
 	char *lineptr = NULL;
 	size_t n = 0;
-	while (c_getline(&lineptr, &n, tmp) >= 0) {
-		char *line = c_strdup(lineptr);
-		trim(line);
-		alist_add(&list, line);
+	while (c_getline_nonull(&lineptr, &n, tmp) != -1) {
+		trim(lineptr);
+		alist_add(&list, c_strdup(lineptr));
 	}
 	c_free(lineptr);
 
@@ -77,7 +74,6 @@ int main(int argc, char **argv) {
 	c_remove(tmpfilename);
 
 	if (cnt != list.size) {
-		free_list(&list);
 		fatal("Different number of lines: original %li, new %li", cnt, list.size);
 	}
 
@@ -87,15 +83,19 @@ int main(int argc, char **argv) {
 
 		if (strcmp(old, new)) {
 			if (access(old, F_OK)) {
-				error("File %s does not exist.", old);
+				fatal("File %s does not exist", old);
 			} else if (!access(new, F_OK)) {
-				error("File %s already exists.", new);
-			} else if (rename(old, new)) {
-				error("Cannot rename %s: %s", old, c_strerror(errno));
+				fatal("File %s already exists", new);
+			} else {
+				c_rename(old, new);
 			}
 		}
 	}
 
-	free_list(&list);
-	return return_code;
+	for (size_t i = 0; i < list.size; i++) {
+		c_free(list.data[i]);
+	}
+	alist_destroy(&list);
+	c_fflush(stdout);
+	return 0;
 }

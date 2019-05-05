@@ -1,6 +1,4 @@
 #include "common.c"
-#include <sys/stat.h>
-#include <dirent.h>
 
 static char *combine_path(const char *dir, const char *file) {
 	const char *sep = "";
@@ -10,18 +8,12 @@ static char *combine_path(const char *dir, const char *file) {
 	return c_asprintf("%s%s%s", dir, sep, file);
 }
 
-static int prepdir(const char *pathname) {
-	printf("Creating directory: %s\n", pathname);
-
-	int ret = mkdir(pathname, 0755);
-	if (ret && errno != EEXIST) {
-		error("Cannot create directory %s: %s", pathname, c_strerror(errno));
-		return ret;
-	}
-	return 0;
+static void prepdir(const char *pathname) {
+	c_printf("Creating directory: %s\n", pathname);
+	c_mkdir_tryexist(pathname, 0755);
 }
 
-static int prepdir_rec(char *path, size_t base_length) {
+static void prepdir_rec(char *path, size_t base_length) {
 	char *cur = path + base_length;
 	char *last = NULL;
 
@@ -31,16 +23,22 @@ static int prepdir_rec(char *path, size_t base_length) {
 		if (cur != new) {
 			if (last) {
 				*last = '\0';
-				int ret = prepdir(path);
+				prepdir(path);
 				*last = '/';
-
-				if (ret) return ret;
 			}
 			last = new;
 		}
 		cur = new + 1;
 	} while (*new);
-	return 0;
+}
+
+static void full_exec(const char *file, char *const argv[]) {
+	int pid = c_fork();
+	if (pid) {
+		c_waitpid(pid);
+	} else {
+		c_execvp(file, argv);
+	}
 }
 
 static void process_file(char *in, char *out) {
@@ -56,7 +54,7 @@ static void process_file(char *in, char *out) {
 			char p7[] = "-map_metadata";
 			char p8[] = "-1";
 			char *params[] = {p0, p1, p2, in, p4, p5, p6, p7, p8, out, NULL};
-			c_execvp_wait(p0, params);
+			full_exec(p0, params);
 		} else if(!strcasecmp(dot, ".flac") || !strcasecmp(dot, ".ape")) {
 			strcpy(dot, ".mp3");
 			char p0[] = "ffmpeg";
@@ -68,7 +66,7 @@ static void process_file(char *in, char *out) {
 			char p7[] = "-map_metadata";
 			char p8[] = "-1";
 			char *params[] = {p0, p1, p2, in, p4, p5, p6, p7, p8, out, NULL};
-			c_execvp_wait(p0, params);
+			full_exec(p0, params);
 		}
 	}
 }
@@ -79,47 +77,33 @@ static void process(const char *in, const char *out, const char *subpath, unsign
 
 	if (type_hint == DT_UNKNOWN || type_hint == DT_LNK) {
 		struct stat statbuf;
-		if (stat(in_full, &statbuf)) {
-			error("Cannot stat %s: %s", in_full, c_strerror(errno));
-			goto out_free;
-		}
+		c_stat(in_full, &statbuf);
 		if (S_ISDIR(statbuf.st_mode)) {
 			type_hint = DT_DIR;
 		}
 	}
 
 	if (top) {
-		if (prepdir_rec(out_full, strlen(out))) goto out_free;
+		prepdir_rec(out_full, strlen(out));
 	}
 
 	if (type_hint == DT_DIR) {
-		DIR *d = opendir(in_full);
-		if (!d) {
-			error("Cannot open dir %s: %s", in_full, c_strerror(errno));
-			goto out_free;
-		}
+		DIR *d = c_opendir(in_full);
 
-		if (prepdir(out_full)) goto out_closedir;
+		prepdir(out_full);
 
 		struct dirent *de;
-		while ((errno = 0) || (de = readdir(d))) {
+		while ((de = readdir(d))) {
 			if (strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
 				process(in_full, out_full, de->d_name, de->d_type, 0);
 			}
 		}
-		if (errno) {
-			error("Cannot read dir %s: %s", in_full, c_strerror(errno));
-		}
 
-out_closedir:
-		if (closedir(d)) {
-			error("Cannot close dir %s: %s", in_full, c_strerror(errno));
-		}
+		closedir(d);
 	} else {
 		process_file(in_full, out_full);
 	}
 
-out_free:
 	c_free(in_full);
 	c_free(out_full);
 }
@@ -128,7 +112,7 @@ int main(int argc, char **argv) {
 	char *pname = *argv++;
 	if (!*argv) {
 		fprintf(stderr, "Usage: %s -in <input dir> -out <output dir> <input subfiles, subdirs>\n", pname);
-		return 3;
+		return 2;
 	}
 
 	char *in = NULL;
@@ -155,5 +139,6 @@ int main(int argc, char **argv) {
 		process(in, out, *argv++, DT_UNKNOWN, 1);
 	}
 
-	return return_code;
+	c_fflush(stdout);
+	return 0;
 }

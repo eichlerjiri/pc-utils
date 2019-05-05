@@ -20,11 +20,7 @@ static void to_srt(char *buffer, long millis) {
 }
 
 static void process(const char *filename, long from, long to, int rewrite, long diff, float diff_fps) {
-	FILE *input = fopen(filename, "r");
-	if (!input) {
-		error("Cannot open %s: %s", filename, c_strerror(errno));
-		return;
-	}
+	FILE *input = c_fopen(filename, "r");
 
 	regex_t reg1, reg2, reg3;
 	c_regcomp(&reg1, "^([^\r\n]*)([\r\n]*)$");
@@ -46,12 +42,11 @@ static void process(const char *filename, long from, long to, int rewrite, long 
 	unsigned long linenum = 0;
 	char *s = NULL;
 	size_t n = 0;
-	while (c_getline_tryin(&s, &n, input) >= 0) {
+	while (c_getline_nonull(&s, &n, input) >= 0) {
 		linenum++;
 
 		if (regexec(&reg1, s, 3, m, 0)) {
-			error("%s: line %lu: Invalid format", filename, linenum);
-			goto end_free;
+			fatal("%s: line %lu: Invalid format", filename, linenum);
 		}
 		if (strcmp(s + m[2].rm_so, "\r\n")) {
 			printf("%s%s: line %lu: Invalid newline\n", fixing, filename, linenum);
@@ -64,8 +59,7 @@ static void process(const char *filename, long from, long to, int rewrite, long 
 				printf("%s%s: line %lu: Extra blank line\n", fixing, filename, linenum);
 			}
 			if (regexec(&reg2, s, 1, m, 0)) {
-				error("%s: line %lu: Invalid format", filename, linenum);
-				goto end_free;
+				fatal("%s: line %lu: Invalid format", filename, linenum);
 			}
 
 			long subnum_cur = atol(s);
@@ -82,8 +76,7 @@ static void process(const char *filename, long from, long to, int rewrite, long 
 			state = 1;
 		} else if (state == 1) {
 			if (regexec(&reg3, s, 11, m, 0)) {
-				error("%s: line %lu: Invalid format", filename, linenum);
-				goto end_free;
+				fatal("%s: line %lu: Invalid format", filename, linenum);
 			}
 
 			if (s[m[4].rm_so] != ',' || s[m[9].rm_so] != ',') {
@@ -106,14 +99,13 @@ static void process(const char *filename, long from, long to, int rewrite, long 
 			long millis2 = to_millis(s + m[6].rm_so, s + m[7].rm_so, s + m[8].rm_so, s + m[10].rm_so);
 
 			if (rewrite) {
-				if ((from == LONG_MIN || from * 1000 <= millis1) &&
-				(to == LONG_MIN || to * 1000 > millis1)) {
+				if ((from == LONG_MIN || from * 1000 <= millis1)
+				&& (to == LONG_MIN || to * 1000 > millis1)) {
 					long f = from != LONG_MIN ? from * 1000 : 0;
 					millis1 += diff + (long) (diff_fps * (float)(millis1 - f));
 					millis2 += diff + (long) (diff_fps * (float)(millis2 - f));
 					if (millis1 < 0 || millis2 < 0) {
-						error("%s: line %lu: Negative time", filename, linenum);
-						goto end_free;
+						fatal("%s: line %lu: Negative time", filename, linenum);
 					}
 				}
 
@@ -145,10 +137,6 @@ static void process(const char *filename, long from, long to, int rewrite, long 
 			}
 		}
 	}
-	if (errno) {
-		error("Cannot read %s: %s", filename, c_strerror(errno));
-		goto end_free;
-	}
 
 	if (state != 0) {
 		printf("%s%s: line %lu: Invalid end of file\n", fixing, filename, linenum);
@@ -158,30 +146,19 @@ static void process(const char *filename, long from, long to, int rewrite, long 
 	}
 
 	if (rewrite) {
-		FILE *output = fopen(filename, "w");
-		if (!output) {
-			error("Cannot open %s for writing: %s", filename, c_strerror(errno));
-			goto end_free;
-		}
-		if (fputs(out.data, output) <= 0) {
-			error("Cannot write %s: %s", filename, c_strerror(errno));
-		}
-		if (fclose(output)) {
-			error("Cannot close %s for writing: %s", filename, c_strerror(errno));
-		}
-	}
-
-end_free:
-	c_free(s);
-	if (rewrite) {
+		FILE *output = c_fopen(filename, "w");
+		c_fwrite(out.data, out.size, 1, output);
+		c_fclose(output);
 		sbuffer_destroy(&out);
 	}
-	regfree(&reg1);
-	regfree(&reg2);
-	regfree(&reg3);
-	if (fclose(input)) {
-		error("Cannot close %s: %s", filename, c_strerror(errno));
-	}
+
+	c_free(s);
+
+	c_regfree(&reg1);
+	c_regfree(&reg2);
+	c_regfree(&reg3);
+
+	c_fclose(input);
 }
 
 static long longarg(const char *arg) {
@@ -216,12 +193,12 @@ int main(int argc, char **argv) {
 			"    fix             rewrite SRT file to fix some format problems\n"
 			"    +<millis>       forward subtitles for amount of milliseconds\n"
 			"    -<millis>       backward subtitles for amount of milliseconds\n"
-			"    <fps1>%%<fps2>   change speed of subtitles by fps1/fps2\n"
+			"    <fps1>/<fps2>   change speed of subtitles by fps1/fps2\n"
 			"\n"
 			"arguments:\n"
 			"    -from <secs>    time index from which do retime (optional)\n"
 			"    -to <secs>      time index to which do retime (optional)\n", pname);
-		return 3;
+		return 2;
 	}
 
 	long from = LONG_MIN;
@@ -252,10 +229,10 @@ int main(int argc, char **argv) {
 		} else if (!strcmp(arg, "fix")) {
 			rewrite = 1;
 			break;
-		} else if ((ptr = strchr(arg, '%'))) {
+		} else if ((ptr = strchr(arg, '/'))) {
 			*ptr = '\0';
 			float fps_from = floatarg(arg);
-			*ptr = '%';
+			*ptr = '/';
 			float fps_to = floatarg(ptr + 1);
 			if (fps_from == -INFINITY || fps_to == -INFINITY || !fps_from || !fps_to) {
 				fatal("Invalid command: %s", arg);
@@ -277,5 +254,6 @@ int main(int argc, char **argv) {
 		process(*argv++, from, to, rewrite, diff, diff_fps);
 	}
 
-	return return_code;
+	c_fflush(stdout);
+	return 0;
 }
