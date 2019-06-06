@@ -93,13 +93,13 @@ static void process(const char *in, const char *out, const char *subpath, unsign
 		prepdir(out_full);
 
 		struct dirent *de;
-		while ((de = readdir(d))) {
+		while ((de = c_readdir(d))) {
 			if (strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
 				process(in_full, out_full, de->d_name, de->d_type, 0);
 			}
 		}
 
-		closedir(d);
+		c_closedir(d);
 	} else {
 		process_file(in_full, out_full);
 	}
