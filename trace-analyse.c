@@ -1,38 +1,15 @@
-#include "common.c"
-#include "hmap.c"
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <errno.h>
+#include <string.h>
+#include <ctype.h>
+#include "utils/stdlib_e.h"
+#include "utils/stdio_e.h"
+#include "utils/string_e.h"
+#include "utils/hmap.h"
 
-static size_t hash_str(const void* key) {
-	const unsigned char* str = key;
-	size_t ret = 1u;
-	while (*str) {
-		ret = 31u * ret + *str++;
-	}
-	return ret;
-}
-
-static int equals_str(const void* key1, const void* key2) {
-	const char* str1 = key1;
-	const char* str2 = key2;
-	return !strcmp(str1, str2);
-}
-
-int main(int argc, char **argv) {
-	char *pname = *argv++;
-	if (!*argv) {
-		fprintf(stderr, "Usage: %s <trace.txt file>\n", pname);
-		return 2;
-	}
-
-	char *filename = *argv++;
-	if (*argv) {
-		fatal("Too many arguments");
-	}
-
-	FILE *input = c_fopen(filename, "r");
-
-	struct hmap map;
-	hmap_init(&map, hash_str, equals_str);
-
+static int process(FILE *input, char *filename, char **in, size_t *insize, struct hmap *map) {
 	char flag[100];
 	char type[100];
 	char address[100];
@@ -40,54 +17,91 @@ int main(int argc, char **argv) {
 	char buffer[200];
 
 	unsigned long linenum = 0;
-	char *lineptr = NULL;
-	size_t n = 0;
-	while (c_getline_nonull(&lineptr, &n, input) != -1) {
+	ssize_t linelen;
+	while ((linelen = getline_em(in, insize, input)) != -1) {
 		linenum++;
-		if (sscanf(lineptr, "%99s %99s %99s %99s", flag, type, address, function) != 4
+
+		if (sscanf(*in, "%99s %99s %99s %99s", flag, type, address, function) != 4
 		|| (flag[0] != 'A' && flag[0] != 'F')) {
-			fatal("Line %lu: Invalid format", linenum);
+			fprintf(stderr, "Line %lu: Invalid format\n", linenum);
+			return 2;
 		}
 
 		sprintf(buffer, "%s %s", type, address);
 		if (flag[0] == 'A') {
-			if (hmap_get(&map, buffer)) {
-				c_printf("Line %lu: Repeated alloc: %s %s\n", linenum, buffer, function);
+			if (hmap_get(map, buffer)) {
+				printf_e("Line %lu: Repeated alloc: %s %s\n", linenum, buffer, function);
 			} else {
-				hmap_put(&map, c_strdup(buffer), c_strdup(function), NULL, NULL);
+				hmap_put(map, strdup_e(buffer), strdup_e(function));
 			}
 		} else {
-			if (!hmap_get(&map, buffer)) {
-				c_printf("Line %lu: Free before alloc: %s %s\n", linenum, buffer, function);
+			if (!hmap_get(map, buffer)) {
+				printf_e("Line %lu: Free before alloc: %s %s\n", linenum, buffer, function);
 			} else {
-				void *rkey = NULL;
-				void *rvalue = NULL;
-				hmap_remove(&map, buffer, &rkey, &rvalue);
-				c_free(rkey);
-				c_free(rvalue);
+				hmap_remove(map, buffer);
 			}
 		}
 	}
-
-	if (map.size) {
-		c_printf("Remaining:\n");
-		for (int i = 0; i < map.capacity; i++) {
-			struct hmap_item *item = map.data[i];
+	if (errno) {
+		fprintf(stderr, "Error reading file %s: %s\n", filename, strerror(errno));
+		return 2;
+	}
+	if (map->size) {
+		printf_e("Remaining:\n");
+		for (int i = 0; i < map->capacity; i++) {
+			struct hmap_item *item = map->data[i];
 			while (item) {
 				char *key = item->key;
 				char *value = item->value;
-				c_printf("\t%s %s\n", key, value);
-				c_free(key);
-				c_free(value);
-
+				printf_e("\t%s %s\n", key, value);
 				item = item->next;
 			}
 		}
 	}
+	return 0;
+}
+
+static int run(char **argv) {
+	char *pname = *argv++;
+	if (!*argv) {
+		printf_e("Usage: %s <trace.txt file>\n", pname);
+		return 1;
+	}
+
+	char *filename = *argv++;
+	if (*argv) {
+		fprintf(stderr, "Too many arguments\n");
+		return 2;
+	}
+
+	FILE *input = fopen(filename, "r");
+	if (!input) {
+		fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
+		return 2;
+	}
+
+	char *in = NULL;
+	size_t insize = 0;
+
+	struct hmap map;
+	hmap_init(&map, hash_str, equals_str);
+
+	int ret = process(input, filename, &in, &insize, &map);
 
 	hmap_destroy(&map);
-	c_free(lineptr);
-	c_fclose(input);
-	c_fflush(stdout);
-	return 0;
+
+	free(in);
+
+	if (fclose(input)) {
+		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));
+		return 2;
+	}
+
+	return ret;
+}
+
+int main(int argc, char **argv) {
+	int ret = run(argv);
+	fflush_e(stdout);
+	return ret;
 }

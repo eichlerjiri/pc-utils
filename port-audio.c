@@ -1,118 +1,161 @@
-#include "common.c"
+#define _GNU_SOURCE
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <errno.h>
+#include <string.h>
+#include <unistd.h>
+#include <dirent.h>
+#include <sys/wait.h>
+#include <sys/stat.h>
+#include "utils/stdlib_e.h"
+#include "utils/stdio_e.h"
+#include "utils/unistd_e.h"
+#include "utils/syswait_e.h"
 
 static char *combine_path(const char *dir, const char *file) {
-	const char *sep = "";
-	if (dir[strlen(dir) - 1] != '/') {
-		sep = "/";
+	char *ret;
+	if (dir[strlen(dir) - 1] == '/' || file[0] == '/') {
+		asprintf_e(&ret, "%s%s", dir, file);
+	} else {
+		asprintf_e(&ret, "%s/%s", dir, file);
 	}
-	return c_asprintf("%s%s%s", dir, sep, file);
+	return ret;
 }
 
-static void prepdir(const char *pathname) {
-	c_printf("Creating directory: %s\n", pathname);
-	c_mkdir_tryexist(pathname, 0755);
+static int prepdir(const char *pathname) {
+	printf_e("Creating directory: %s\n", pathname);
+	if (mkdir(pathname, 0755) && errno != EEXIST) {
+		fprintf(stderr, "Error creating directory %s: %s\n", pathname, strerror(errno));
+		return 2;
+	}
+	return 0;
 }
 
-static void prepdir_rec(char *path, size_t base_length) {
+static int prepdir_rec(char *path, size_t base_length) {
 	char *cur = path + base_length;
-	char *last = NULL;
-
-	char *new;
-	do {
-		new = strchrnul(cur, '/');
-		if (cur != new) {
-			if (last) {
-				*last = '\0';
-				prepdir(path);
-				*last = '/';
+	while (1) {
+		char *new = strchrnul(cur, '/');
+		if (new != cur) {
+			char orig = *new;
+			*new = '\0';
+			int ret = prepdir(path);
+			*new = orig;
+			if (ret) {
+				return ret;
 			}
-			last = new;
+		}
+		if (!*new) {
+			return 0;
 		}
 		cur = new + 1;
-	} while (*new);
-}
-
-static void full_exec(const char *file, char *const argv[]) {
-	int pid = c_fork();
-	if (pid) {
-		c_waitpid(pid);
-	} else {
-		c_execvp(file, argv);
 	}
 }
 
-static void process_file(char *in, char *out) {
+static int full_exec(const char *file, char *const argv[]) {
+	int pid = fork_e();
+	if (pid) {
+		int wstatus = 0;
+		waitpid_e(pid, &wstatus, 0);
+		if (!WIFEXITED(wstatus)) {
+			fprintf(stderr, "Editor didn't terminate normally\n");
+			return 2;
+		}
+		int code = WEXITSTATUS(wstatus);
+		if (code) {
+			fprintf(stderr, "Editor exited with error code %i\n", code);
+			return 2;
+		}
+	} else {
+		execvp(file, argv);
+		fprintf(stderr, "Error starting %s: %s\n", file, strerror(errno));
+		return 2;
+	}
+	return 0;
+}
+
+static int process_file(char *in, char *out) {
 	char *dot = strrchr(out, '.');
 	if (dot) {
 		if (!strcasecmp(dot, ".mp3") || !strcasecmp(dot, ".m4a")) {
-			char p0[] = "ffmpeg";
-			char p1[] = "-y";
-			char p2[] = "-i";
-			char p4[] = "-vn";
-			char p5[] = "-codec:a";
-			char p6[] = "copy";
-			char p7[] = "-map_metadata";
-			char p8[] = "-1";
-			char *params[] = {p0, p1, p2, in, p4, p5, p6, p7, p8, out, NULL};
-			full_exec(p0, params);
+			const char *params[] = {"ffmpeg", "-y", "-i", in, "-vn", "-codec:a", "copy",
+				"-map_metadata", "-1", out, NULL};
+			return full_exec("ffmpeg", (char**) params);
 		} else if(!strcasecmp(dot, ".flac") || !strcasecmp(dot, ".ape")) {
 			strcpy(dot, ".mp3");
-			char p0[] = "ffmpeg";
-			char p1[] = "-y";
-			char p2[] = "-i";
-			char p4[] = "-vn";
-			char p5[] = "-ab";
-			char p6[] = "320k";
-			char p7[] = "-map_metadata";
-			char p8[] = "-1";
-			char *params[] = {p0, p1, p2, in, p4, p5, p6, p7, p8, out, NULL};
-			full_exec(p0, params);
+			const char *params[] = {"ffmpeg", "-y", "-i", in, "-vn", "-ab", "320k",
+				"-map_metadata", "-1", out, NULL};
+			return full_exec("ffmpeg", (char**) params);
 		}
 	}
+	return 0;
 }
 
-static void process(const char *in, const char *out, const char *subpath, unsigned char type_hint, int top) {
-	char *in_full = combine_path(in, subpath);
-	char *out_full = combine_path(out, subpath);
+static int process(char *in, char *out, unsigned char type_hint, int create);
+static int process_dir(char *in, char *out, DIR *d) {
+	int ret = 0;
+	struct dirent *de;
+	while (!(errno = 0) && (de = readdir(d))) {
+		if (strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
+			char *in_full = combine_path(in, de->d_name);
+			char *out_full = combine_path(out, de->d_name);
+			if (process(in_full, out_full, de->d_type, 1)) {
+				ret = 2;
+			}
+			free(in_full);
+			free(out_full);
+		}
+	}
+	if (errno) {
+		fprintf(stderr, "Error reading directory %s: %s\n", in, strerror(errno));
+		return 2;
+	}
+	return ret;
+}
 
+static int process(char *in, char *out, unsigned char type_hint, int create) {
 	if (type_hint == DT_UNKNOWN || type_hint == DT_LNK) {
 		struct stat statbuf;
-		c_stat(in_full, &statbuf);
+		if (stat(in, &statbuf)) {
+			fprintf(stderr, "Error retrieving entry %s: %s\n", in, strerror(errno));
+			return 2;
+		}
 		if (S_ISDIR(statbuf.st_mode)) {
 			type_hint = DT_DIR;
 		}
 	}
 
-	if (top) {
-		prepdir_rec(out_full, strlen(out));
-	}
-
 	if (type_hint == DT_DIR) {
-		DIR *d = c_opendir(in_full);
-
-		prepdir(out_full);
-
-		struct dirent *de;
-		while ((de = c_readdir(d))) {
-			if (strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
-				process(in_full, out_full, de->d_name, de->d_type, 0);
+		if (create) {
+			if (prepdir(out)) {
+				return 2;
 			}
 		}
 
-		c_closedir(d);
-	} else {
-		process_file(in_full, out_full);
-	}
+		DIR *d = opendir(in);
+		if (!d) {
+			fprintf(stderr, "Error opening directory %s: %s\n", in, strerror(errno));
+			return 2;
+		}
 
-	c_free(in_full);
-	c_free(out_full);
+		int ret = process_dir(in, out, d);
+
+		if (closedir(d)) {
+			fprintf(stderr, "Error closing directory %s: %s\n", in, strerror(errno));
+			return 2;
+		}
+
+		return ret;
+	} else {
+		return process_file(in, out);
+	}
 }
 
-int main(int argc, char **argv) {
+static int run(char **argv) {
 	char *pname = *argv++;
 	if (!*argv) {
-		fprintf(stderr, "Usage: %s -in <input dir> -out <output dir> <input subfiles, subdirs>\n", pname);
-		return 2;
+		printf_e("Usage: %s -in <input dir> -out <output dir> <input subfiles, subdirs>\n", pname);
+		return 1;
 	}
 
 	char *in = NULL;
@@ -128,17 +171,31 @@ int main(int argc, char **argv) {
 		} else if (!strcmp(arg, "-out") && *argv) {
 			out = *argv++;
 		} else {
-			fatal("Invalid argument: %s", arg);
+			fprintf(stderr, "Invalid argument: %s\n", arg);
+			return 2;
 		}
 	}
 	if (!in || !out || !*argv) {
-		fatal("Missing arguments");
+		fprintf(stderr, "Missing arguments\n");
+		return 2;
 	}
 
+	int ret = 0;
 	while (*argv) {
-		process(in, out, *argv++, DT_UNKNOWN, 1);
+		char *subpath = *argv++;
+		char *in_full = combine_path(in, subpath);
+		char *out_full = combine_path(out, subpath);
+		if (prepdir_rec(out_full, strlen(out)) || process(in_full, out_full, DT_DIR, 0)) {
+			ret = 2;
+		}
+		free(in_full);
+		free(out_full);
 	}
+	return ret;
+}
 
-	c_fflush(stdout);
-	return 0;
+int main(int argc, char **argv) {
+	int ret = run(argv);
+	fflush_e(stdout);
+	return ret;
 }

@@ -1,101 +1,125 @@
-#include "common.c"
-#include "alist.c"
-#include <ctype.h>
+#include <stdlib.h>
+#include <stdio.h>
+#include <stdarg.h>
+#include <errno.h>
+#include <string.h>
+#include <unistd.h>
+#include <sys/wait.h>
+#include "utils/stdlib_e.h"
+#include "utils/stdio_e.h"
+#include "utils/string_e.h"
+#include "utils/unistd_e.h"
+#include "utils/syswait_e.h"
+#include "utils/alist.h"
 
-static void replace_char(char *str, char from, char to) {
-	while (*str) {
-		if (*str == from) {
-			*str = to;
+static int do_rename(char *old, char *new) {
+	if (strcmp(old, new)) {
+		if (access(old, F_OK)) {
+			fprintf(stderr, "File %s does not exist\n", old);
+			return 2;
+		} else if (!access(new, F_OK)) {
+			fprintf(stderr, "File %s already exists\n", new);
+			return 2;
+		} else if (rename(old, new)) {
+			fprintf(stderr, "Error renaming %s to %s: %s\n", old, new, strerror(errno));
+			return 2;
+		} else {
+			printf_e("Renamed %s to %s\n", old, new);
 		}
-		str++;
 	}
+	return 0;
 }
 
-static void trim(char *str) {
-	char *pos = str;
-	char *end = str;
-	int some = 0;
-	while (*pos) {
-		if (!isspace(*pos)) {
-			end = str + 1;
-			some = 1;
+static int process(char **argv, size_t cnt, FILE *tmp, char **in, size_t *insize, struct alist *list) {
+	ssize_t linelen;
+	while ((linelen = getline_e(in, insize, tmp)) != -1) {
+		char *ind = *in;
+		if (ind[linelen - 1] == '\n') {
+			ind[linelen - 1] = '\0';
 		}
-
-		if (some) {
-			*str = *pos;
-			str++;
-		}
-		pos++;
+		alist_add(list, strdup_e(ind));
 	}
-	*end = '\0';
-}
 
-int main(int argc, char **argv) {
-	char *pname = *argv++;
-	if (!*argv) {
-		fprintf(stderr, "Usage: %s <files to be renamed>\n", pname);
+	if (cnt != list->size) {
+		fprintf(stderr, "Different number of lines: original %li, new %li\n", cnt, list->size);
 		return 2;
 	}
 
-	char tmpfilename[] = "/tmp/renamer XXXXXX.txt";
-	FILE *tmp = c_fdopen(c_mkstemps(tmpfilename, 4), "w");
+	int ret = 0;
+	for (size_t i = 0; i < cnt; i++) {
+		if (do_rename(argv[i], list->data[i])) {
+			ret = 2;
+		}
+	}
+	return ret;
+}
+
+static int run(char **argv) {
+	char *pname = *argv++;
+	if (!*argv) {
+		printf_e("Usage: %s <files to be renamed>\n", pname);
+		return 1;
+	}
 
 	size_t cnt = 0;
-	do {
-		replace_char(argv[cnt], '\n', '?');
-		c_fprintf(tmp, "%s\n", argv[cnt]);
-	} while(argv[++cnt]);
+	while (argv[cnt]) {
+		if (strchr(argv[cnt++], '\n')) {
+			fprintf(stderr, "Filenames with newline not supported\n");
+			return 2;
+		}
+	}
 
-	c_fclose(tmp);
+	char tmpfilename[] = "/tmp/renamer XXXXXX.txt";
+	FILE *tmp = fdopen_e(mkstemps_e(tmpfilename, 4), "w");
 
-	int pid = c_fork();
+	for (size_t i = 0; i < cnt; i++) {
+		fprintf_e(tmp, "%s\n", argv[i]);
+	}
+
+	fclose_e(tmp);
+
+	int pid = fork_e();
 	if (pid) {
-		c_waitpid(pid);
+		int wstatus = 0;
+		waitpid_e(pid, &wstatus, 0);
+		if (!WIFEXITED(wstatus)) {
+			fprintf(stderr, "Editor didn't terminate normally\n");
+			return 2;
+		}
+		int code = WEXITSTATUS(wstatus);
+		if (code) {
+			fprintf(stderr, "Editor exited with error code %i\n", code);
+			return 2;
+		}
 	} else {
-		char p0[] = "vim";
-		char *params[] = {p0, tmpfilename, NULL};
-		c_execvp(p0, params);
+		const char *params[] = {"vim", tmpfilename, NULL};
+		execvp("vim", (char**) params);
+		fprintf(stderr, "Error starting vim: %s\n", strerror(errno));
+		return 2;
 	}
 
 	struct alist list;
 	alist_init(&list);
 
-	tmp = c_fopen(tmpfilename, "r");
+	tmp = fopen_e(tmpfilename, "r");
 
-	char *lineptr = NULL;
-	size_t n = 0;
-	while (c_getline_nonull(&lineptr, &n, tmp) != -1) {
-		trim(lineptr);
-		alist_add(&list, c_strdup(lineptr));
-	}
-	c_free(lineptr);
+	char *in = NULL;
+	size_t insize = 0;
 
-	c_fclose(tmp);
-	c_remove(tmpfilename);
+	int ret = process(argv, cnt, tmp, &in, &insize, &list);
 
-	if (cnt != list.size) {
-		fatal("Different number of lines: original %li, new %li", cnt, list.size);
-	}
+	free(in);
 
-	for (size_t i = 0; i < cnt; i++) {
-		char *old = argv[i];
-		char *new = list.data[i];
+	fclose_e(tmp);
+	remove_e(tmpfilename);
 
-		if (strcmp(old, new)) {
-			if (access(old, F_OK)) {
-				fatal("File %s does not exist", old);
-			} else if (!access(new, F_OK)) {
-				fatal("File %s already exists", new);
-			} else {
-				c_rename(old, new);
-			}
-		}
-	}
-
-	for (size_t i = 0; i < list.size; i++) {
-		c_free(list.data[i]);
-	}
 	alist_destroy(&list);
-	c_fflush(stdout);
-	return 0;
+
+	return ret;
+}
+
+int main(int argc, char **argv) {
+	int ret = run(argv);
+	fflush_e(stdout);
+	return ret;
 }

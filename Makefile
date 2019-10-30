@@ -1,4 +1,4 @@
-CFLAGS=-O2 -pedantic -Wall -Wwrite-strings -Wconversion -Wno-unused-function -DENABLE_TRACE=0
+CFLAGS=-O2 -pedantic -Wall -Wwrite-strings -Wconversion -Wno-unused-function
 
 all: keystroke-counter port-audio print-non-ascii trace-analyse renamer srt-edit
 phony:
