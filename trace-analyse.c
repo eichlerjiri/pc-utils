@@ -4,56 +4,79 @@
 #include <errno.h>
 #include <string.h>
 #include <ctype.h>
-#include "utils/stdlib_e.h"
-#include "utils/stdio_e.h"
-#include "utils/string_e.h"
+#include "utils/stdlib_utils.h"
+#include "utils/stdio_utils.h"
+#include "utils/string_utils.h"
 #include "utils/hmap.h"
+#include "utils/sbuffer.h"
+#include "utils/parser.h"
 
-static int process(FILE *input, char *filename, char **in, size_t *insize, struct hmap *map) {
-	char flag[100];
-	char type[100];
-	char address[100];
-	char function[100];
-	char buffer[200];
+struct res {
+	char *in;
+	size_t insize;
+	struct hmap map;
+	struct sbuffer sb;
+};
 
+static int parse_line(char *in, char **flag, char **type, char **function, struct sbuffer *sb) {
+	sbuffer_clear(sb);
+
+	size_t flag_pos = sb->size;
+	int err = parse_word(&in, sb);
+	sbuffer_add_c(sb, '\0');
+
+	size_t type_pos = sb->size;
+	err += parse_word(&in, sb);
+	sbuffer_add_c(sb, ' ');
+	err += parse_word(&in, sb);
+	sbuffer_add_c(sb, '\0');
+
+	size_t function_pos = sb->size;
+	err += parse_word(&in, sb);
+
+	*flag = sb->data + flag_pos;
+	*type = sb->data + type_pos;
+	*function  = sb->data + function_pos;
+	return err;
+}
+
+static int process_file(FILE *input, char *filename, struct res *c) {
 	unsigned long linenum = 0;
-	ssize_t linelen;
-	while ((linelen = getline_em(in, insize, input)) != -1) {
+	while (getline_no_eol(&c->in, &c->insize, input) != (size_t) -1) {
 		linenum++;
 
-		if (sscanf(*in, "%99s %99s %99s %99s", flag, type, address, function) != 4
-		|| (flag[0] != 'A' && flag[0] != 'F')) {
+		char *flag, *type, *function;
+		if (parse_line(c->in, &flag, &type, &function, &c->sb) || (strcmp(flag, "A") && strcmp(flag, "F"))) {
 			fprintf(stderr, "Line %lu: Invalid format\n", linenum);
 			return 2;
 		}
 
-		sprintf(buffer, "%s %s", type, address);
-		if (flag[0] == 'A') {
-			if (hmap_get(map, buffer)) {
-				printf_e("Line %lu: Repeated alloc: %s %s\n", linenum, buffer, function);
+		if (!strcmp(flag, "A")) {
+			if (hmap_get(&c->map, type)) {
+				printf_safe("Line %lu: Repeated alloc: %s %s\n", linenum, type, function);
 			} else {
-				hmap_put(map, strdup_e(buffer), strdup_e(function));
+				hmap_put(&c->map, strdup_safe(type), strdup_safe(function));
 			}
 		} else {
-			if (!hmap_get(map, buffer)) {
-				printf_e("Line %lu: Free before alloc: %s %s\n", linenum, buffer, function);
+			if (!hmap_get(&c->map, type)) {
+				printf_safe("Line %lu: Free before alloc: %s %s\n", linenum, type, function);
 			} else {
-				hmap_remove(map, buffer);
+				hmap_remove(&c->map, type);
 			}
 		}
 	}
-	if (errno) {
+	if (!feof(input)) {
 		fprintf(stderr, "Error reading file %s: %s\n", filename, strerror(errno));
 		return 2;
 	}
-	if (map->size) {
-		printf_e("Remaining:\n");
-		for (int i = 0; i < map->capacity; i++) {
-			struct hmap_item *item = map->data[i];
+	if (c->map.size) {
+		printf_safe("Remaining:\n");
+		for (int i = 0; i < c->map.capacity; i++) {
+			struct hmap_item *item = c->map.data[i];
 			while (item) {
 				char *key = item->key;
 				char *value = item->value;
-				printf_e("\t%s %s\n", key, value);
+				printf_safe("\t%s %s\n", key, value);
 				item = item->next;
 			}
 		}
@@ -61,10 +84,10 @@ static int process(FILE *input, char *filename, char **in, size_t *insize, struc
 	return 0;
 }
 
-static int run(char **argv) {
+static int run_program(char **argv) {
 	char *pname = *argv++;
 	if (!*argv) {
-		printf_e("Usage: %s <trace.txt file>\n", pname);
+		printf_safe("Usage: %s <trace.txt file>\n", pname);
 		return 1;
 	}
 
@@ -80,28 +103,26 @@ static int run(char **argv) {
 		return 2;
 	}
 
-	char *in = NULL;
-	size_t insize = 0;
+	struct res c = {0};
+	hmap_init(&c.map, hash_str, equals_str);
+	sbuffer_init(&c.sb);
 
-	struct hmap map;
-	hmap_init(&map, hash_str, equals_str);
+	int ret = process_file(input, filename, &c);
 
-	int ret = process(input, filename, &in, &insize, &map);
-
-	hmap_destroy(&map);
-
-	free(in);
+	free(c.in);
+	hmap_destroy(&c.map);
+	sbuffer_destroy(&c.sb);
 
 	if (fclose(input)) {
 		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));
-		return 2;
+		ret = 2;
 	}
 
 	return ret;
 }
 
 int main(int argc, char **argv) {
-	int ret = run(argv);
-	fflush_e(stdout);
+	int ret = run_program(argv);
+	fflush_safe(stdout);
 	return ret;
 }

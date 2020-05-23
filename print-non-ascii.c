@@ -4,17 +4,14 @@
 #include <errno.h>
 #include <string.h>
 #include <iconv.h>
-#include "utils/stdlib_e.h"
-#include "utils/stdio_e.h"
-#include "utils/iconv_e.h"
+#include "utils/stdlib_utils.h"
+#include "utils/stdio_utils.h"
+#include "utils/iconv_utils.h"
 
 struct res {
-	iconv_t cd_utf8;
-	iconv_t cd_latin1;
-	size_t insize;
-	size_t outsize;
-	char *in;
-	char *out;
+	iconv_t cd_utf8, cd_latin1;
+	size_t insize, outsize;
+	char *in, *out;
 };
 
 static int nonascii(char *in, size_t n) {
@@ -26,79 +23,50 @@ static int nonascii(char *in, size_t n) {
 	return 0;
 }
 
-static size_t iconv_full(iconv_t cd, char *in, size_t inlen, char *out, size_t outlen) {
-	char *outbuf = out;
-	size_t ret = iconv(cd, &in, &inlen, &outbuf, &outlen);
-	if (ret == (size_t) -1) {
-		return ret;
-	} else {
-		return (size_t) (outbuf - out);
-	}
-}
-
-static int process(FILE *input, char *filename, struct res *c) {
-	unsigned long linenum = 0;
-	size_t linelen;
-	while ((linelen = (size_t) getline_em(&c->in, &c->insize, input)) != (size_t) -1) {
-		linenum++;
-
-		if (c->in[linelen - 1] == '\n') {
-			linelen--;
-		}
-
-		if (nonascii(c->in, linelen)) {
-			if (c->outsize < linelen * 4) {
-				c->outsize = linelen * 4;
-				c->out = realloc_e(c->out, c->outsize);
-			}
-
-			const char* code = "utf8";
-			if (!c->cd_utf8) {
-				c->cd_utf8 = iconv_open_e("utf8", code);
-			}
-			size_t outlen = iconv_full(c->cd_utf8, c->in, linelen, c->out, c->outsize);
-
-			if (outlen == (size_t) -1) {
-				code = "latin1";
-				if (!c->cd_latin1) {
-					c->cd_latin1 = iconv_open_e("utf8", code);
-				}
-				outlen = iconv_full(c->cd_latin1, c->in, linelen, c->out, c->outsize);
-			}
-
-			printf_e("%s: line %lu %s: ", filename, linenum, code);
-			fwrite_e(c->out, outlen, 1, stdout);
-			putchar_e('\n');
-		}
-	}
-	if (errno) {
-		fprintf(stderr, "Error reading file %s: %s\n", filename, strerror(errno));
-		return 2;
-	}
-	return 0;
-}
-
-static int process_arg(char *filename, struct res *c) {
+static int process_file(char *filename, struct res *c) {
 	FILE *input = fopen(filename, "r");
 	if (!input) {
 		fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
 		return 2;
 	}
 
-	int ret = process(input, filename, c);
+	int ret = 0;
 
+	unsigned long linenum = 0;
+	size_t inlen;
+	while ((inlen = getline_no_eol(&c->in, &c->insize, input)) != (size_t) -1) {
+		linenum++;
+
+		if (nonascii(c->in, inlen)) {
+			const char* code = "utf8";
+			size_t outlen = iconv_direct(&c->cd_utf8, "utf8", code, c->in, inlen, &c->out, &c->outsize);
+
+			if (outlen == (size_t) -1) {
+				code = "latin1";
+				outlen = iconv_direct(&c->cd_latin1, "utf8", code, c->in, inlen, &c->out, &c->outsize);
+			}
+
+			printf_safe("%s: line %lu %s: ", filename, linenum, code);
+			fwrite_safe(c->out, outlen, 1, stdout);
+			putchar_safe('\n');
+		}
+	}
+	if (!feof(input)) {
+		fprintf(stderr, "Error reading file %s: %s\n", filename, strerror(errno));
+		ret = 2;
+	}
 	if (fclose(input)) {
 		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));
-		return 2;
+		ret = 2;
 	}
 
 	return ret;
 }
 
-static int run(char **argv) {
+static int run_program(char **argv) {
 	char *pname = *argv++;
 	if (!*argv) {
-		printf_e("Usage: %s <input files>\n", pname);
+		printf_safe("Usage: %s <input files>\n", pname);
 		return 1;
 	}
 
@@ -106,17 +74,13 @@ static int run(char **argv) {
 
 	int ret = 0;
 	while (*argv) {
-		if (process_arg(*argv++, &c)) {
+		if (process_file(*argv++, &c)) {
 			ret = 2;
 		}
 	}
 
-	if (c.cd_utf8) {
-		iconv_close(c.cd_utf8);
-	}
-	if (c.cd_latin1) {
-		iconv_close(c.cd_latin1);
-	}
+	iconv_close_if_opened(c.cd_utf8);
+	iconv_close_if_opened(c.cd_latin1);
 	free(c.in);
 	free(c.out);
 
@@ -124,7 +88,7 @@ static int run(char **argv) {
 }
 
 int main(int argc, char **argv) {
-	int ret = run(argv);
-	fflush_e(stdout);
+	int ret = run_program(argv);
+	fflush_safe(stdout);
 	return ret;
 }

@@ -3,30 +3,46 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <string.h>
+#include <ctype.h>
 #include <limits.h>
-#include <math.h>
-#include <regex.h>
-#include "utils/stdlib_e.h"
-#include "utils/stdio_e.h"
-#include "utils/regex_e.h"
+#include "utils/stdlib_utils.h"
+#include "utils/stdio_utils.h"
+#include "utils/string_utils.h"
 #include "utils/sbuffer.h"
-
-#define TIMEREGEX "([0-9]{2}):([0-9]{2}):([0-9]{2})([,\\.])([0-9]{3,4})"
+#include "utils/parser.h"
 
 struct res {
-	regex_t reg1;
-	regex_t reg2;
-	regex_t reg3;
 	size_t insize;
 	char *in;
 	struct sbuffer out;
 };
 
-static long to_millis(const char *hours, const char *minutes, const char *secs, const char *millis) {
-	return atol(millis) + 1000 * (atol(secs) + 60 * (atol(minutes) + (60 * atol(hours))));
+static int parse_srt_time(char **str, long *res, const char *filename, unsigned long linenum, const char *fixing) {
+	long hours, minutes, seconds, millis;
+	char dot = '\0';
+	int err = parse_long(str, &hours, 1);
+	err += parse_char_match(str, ':');
+	err += parse_long(str, &minutes, 1);
+	err += parse_char_match(str, ':');
+	err += parse_long(str, &seconds, 1);
+	err += parse_char(str, &dot);
+	err += parse_long(str, &millis, 1);
+
+	if (err || minutes >= 60 || seconds >= 60 || millis > 1000 || (dot != '.' && dot != ',')) {
+		return 2;
+	}
+	if (dot != ',') {
+		printf_safe("%s%s: line %lu: Wrong dot format\n", fixing, filename, linenum);
+	}
+	if (millis == 1000) {
+		printf_safe("%s%s: line %lu: Wrong millis format\n", fixing, filename, linenum);
+	}
+
+	*res = millis + 1000 * (seconds + 60 * (minutes + (60 * hours)));
+	return 0;
 }
 
-static void to_srt(char *buffer, long millis) {
+static void print_srt_time(char *buffer, long millis) {
 	long secs = millis / 1000;
 	long minutes = secs / 60;
 	long hours = minutes / 60;
@@ -36,8 +52,10 @@ static void to_srt(char *buffer, long millis) {
 	sprintf(buffer, "%02li:%02li:%02li,%03li", hours, minutes, secs, millis);
 }
 
-static int process(const char *filename, FILE *input, long from, long to, int rewrite, long diff, float diff_fps,
+static int process_file(const char *filename, FILE *input, long from, long to, int rewrite, long diff, float diff_fps,
 		struct res *c) {
+	struct sbuffer *out = &c->out;
+
 	const char *fixing;
 	if (rewrite) {
 		fixing = "[FIXING] ";
@@ -49,77 +67,61 @@ static int process(const char *filename, FILE *input, long from, long to, int re
 	long subnum = 0;
 	long subnum_write = 0;
 	long last_millis = 0;
+	size_t last_finished_pos = 0;
 
-	regmatch_t m[11];
 	unsigned long linenum = 0;
-	ssize_t linelen;
-	while ((linelen = getline_em(&c->in, &c->insize, input)) != -1) {
+	size_t linelen;
+	while ((linelen = (size_t) getline(&c->in, &c->insize, input)) != (size_t) -1) {
 		linenum++;
 		char *s = c->in;
 
-		if (linelen != strlen(s)) {
-			fprintf(stderr, "%s: line %lu: Contains NULL byte\n", filename, linenum);
+		if (!valid_line(s, linelen)) {
+			fprintf(stderr, "%s: line %lu: Invalid line format\n", filename, linenum);
 			return 2;
 		}
-		if (regexec(&c->reg1, s, 3, m, 0)) {
-			fprintf(stderr, "%s: line %lu: Invalid format\n", filename, linenum);
-			return 2;
+		if (!ends_with(s, "\r\n")) {
+			printf_safe("%s%s: line %lu: Invalid newline\n", fixing, filename, linenum);
 		}
-		if (strcmp(s + m[2].rm_so, "\r\n")) {
-			printf_e("%s%s: line %lu: Invalid newline\n", fixing, filename, linenum);
-		}
-		s[m[1].rm_eo] = '\0';
+		remove_newline(s);
 
 		char buffer[256];
 		if (state == 0) {
-			if (!strcmp(s, "")) {
-				printf_e("%s%s: line %lu: Extra blank line\n", fixing, filename, linenum);
+			if (!*s) {
+				printf_safe("%s%s: line %lu: Extra blank line\n", fixing, filename, linenum);
+				continue;
 			}
-			if (regexec(&c->reg2, s, 1, m, 0)) {
+
+			long subnum_cur;
+			int err = parse_long(&s, &subnum_cur, 1);
+			if (err || *s) {
 				fprintf(stderr, "%s: line %lu: Invalid format\n", filename, linenum);
 				return 2;
 			}
 
-			long subnum_cur = atol(s);
 			if (subnum_cur != subnum + 1) {
-				printf_e("%s%s: line %lu: Invalid subtitle number\n", fixing, filename, linenum);
+				printf_safe("%s%s: line %lu: Invalid subtitle number\n", fixing, filename, linenum);
 			}
 			subnum = subnum_cur;
 
 			if (rewrite) {
 				sprintf(buffer, "%li\r\n", ++subnum_write);
-				sbuffer_add(&c->out, buffer);
+				sbuffer_add_s(out, buffer);
 			}
 
 			state = 1;
 		} else if (state == 1) {
-			if (regexec(&c->reg3, s, 11, m, 0)) {
+			long millis1, millis2;
+			int err = parse_srt_time(&s, &millis1, filename, linenum, fixing);
+			err += parse_string_match(&s, " --> ");
+			err += parse_srt_time(&s, &millis2, filename, linenum, fixing);
+			if (err || *s) {
 				fprintf(stderr, "%s: line %lu: Invalid format\n", filename, linenum);
 				return 2;
 			}
 
-			if (s[m[4].rm_so] != ',' || s[m[9].rm_so] != ',') {
-				printf_e("%s%s: line %lu: Wrong dot format\n", fixing, filename, linenum);
-			}
-			if (m[5].rm_eo - m[5].rm_so != 3 || m[10].rm_eo - m[10].rm_so != 3) {
-				printf_e("%s%s: line %lu: Wrong millis format\n", fixing, filename, linenum);
-			}
-
-			s[m[1].rm_eo] = '\0';
-			s[m[2].rm_eo] = '\0';
-			s[m[3].rm_eo] = '\0';
-			s[m[5].rm_eo] = '\0';
-			s[m[6].rm_eo] = '\0';
-			s[m[7].rm_eo] = '\0';
-			s[m[8].rm_eo] = '\0';
-			s[m[10].rm_eo] = '\0';
-
-			long millis1 = to_millis(s + m[1].rm_so, s + m[2].rm_so, s + m[3].rm_so, s + m[5].rm_so);
-			long millis2 = to_millis(s + m[6].rm_so, s + m[7].rm_so, s + m[8].rm_so, s + m[10].rm_so);
-
 			if (rewrite) {
 				if ((from == LONG_MIN || from * 1000 <= millis1)
-				&& (to == LONG_MIN || to * 1000 > millis1)) {
+						&& (to == LONG_MIN || to * 1000 > millis1)) {
 					long f;
 					if (from != LONG_MIN) {
 						f = from * 1000;
@@ -127,52 +129,54 @@ static int process(const char *filename, FILE *input, long from, long to, int re
 						f = 0;
 					}
 
-					millis1 += diff + (long) (diff_fps * (float)(millis1 - f));
-					millis2 += diff + (long) (diff_fps * (float)(millis2 - f));
+					millis1 += diff + (long) (diff_fps * (float) (millis1 - f));
+					millis2 += diff + (long) (diff_fps * (float) (millis2 - f));
 					if (millis1 < 0 || millis2 < 0) {
 						fprintf(stderr, "%s: line %lu: Negative time\n", filename, linenum);
 						return 2;
 					}
 				}
 
-				char srtbuf1[64];
-				to_srt(srtbuf1, millis1);
-				char srtbuf2[64];
-				to_srt(srtbuf2, millis2);
-
+				char srtbuf1[64], srtbuf2[64];
+				print_srt_time(srtbuf1, millis1);
+				print_srt_time(srtbuf2, millis2);
 				sprintf(buffer, "%s --> %s\r\n", srtbuf1, srtbuf2);
-				sbuffer_add(&c->out, buffer);
+				sbuffer_add_s(out, buffer);
 			}
 
 			if (millis1 >= millis2) {
-				printf_e("%s: line %lu: Invalid time interval\n", filename, linenum);
+				printf_safe("%s: line %lu: Invalid time interval\n", filename, linenum);
 			}
 			if (millis1 < last_millis) {
-				printf_e("%s: line %lu: Overlap\n", filename, linenum);
+				printf_safe("%s: line %lu: Overlap\n", filename, linenum);
 			}
 			last_millis = millis2;
 
 			state = 2;
-		} else if (state == 2) {
+		} else if (state == 2 || state == 3) {
+			state = 3;
+
 			if (rewrite) {
-				sbuffer_add(&c->out, s);
-				sbuffer_add(&c->out, "\r\n");
+				sbuffer_add_s(out, s);
+				sbuffer_add_s(out, "\r\n");
 			}
-			if (!strcmp(s, "")) {
+			if (!*s) {
+				last_finished_pos = out->size;
 				state = 0;
 			}
 		}
 	}
-	if (errno) {
+	if (!feof(input)) {
 		fprintf(stderr, "Error reading file %s: %s\n", filename, strerror(errno));
 		return 2;
 	}
 
 	if (state != 0) {
-		printf_e("%s%s: line %lu: Invalid end of file\n", fixing, filename, linenum);
-	}
-	if (rewrite && state == 2) {
-		sbuffer_add(&c->out, "\r\n");
+		printf_safe("%s%s: line %lu: Invalid end of file\n", fixing, filename, linenum);
+
+		if (rewrite) {
+			sbuffer_rem(out, out->size - last_finished_pos);
+		}
 	}
 
 	if (rewrite) {
@@ -182,21 +186,25 @@ static int process(const char *filename, FILE *input, long from, long to, int re
 			return 2;
 		}
 
-		if (fwrite(c->out.data, c->out.size, 1, output) != 1) {
+		int ret = 0;
+
+		if (fwrite(out->data, out->size, 1, output) != 1) {
 			fprintf(stderr, "Error writing file %s\n", filename);
-			return 2;
+			ret = 2;
 		}
 
 		if (fclose(output)) {
 			fprintf(stderr, "Error closing file %s for writing: %s\n", filename, strerror(errno));
-			return 2;
+			ret = 2;
 		}
+
+		return ret;
 	}
 
 	return 0;
 }
 
-static int process_arg(const char *filename, long from, long to, int rewrite, long diff, float diff_fps,
+static int process_filename(const char *filename, long from, long to, int rewrite, long diff, float diff_fps,
 		struct res *c) {
 	FILE *input = fopen(filename, "r");
 	if (!input) {
@@ -204,42 +212,20 @@ static int process_arg(const char *filename, long from, long to, int rewrite, lo
 		return 2;
 	}
 
-	int ret = process(filename, input, from, to, rewrite, diff, diff_fps, c);
+	int ret = process_file(filename, input, from, to, rewrite, diff, diff_fps, c);
 
 	if (fclose(input)) {
 		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));
-		return 2;
+		ret = 2;
 	}
 
 	return ret;
 }
 
-static long longarg(const char *arg) {
-	char *end = NULL;
-	errno = 0;
-
-	long ret = strtol(arg, &end, 10);
-	if (errno || !*arg || *end) {
-		return LONG_MIN;
-	}
-	return ret;
-}
-
-static float floatarg(const char *arg) {
-	char *end = NULL;
-	errno = 0;
-
-	float ret = strtof(arg, &end);
-	if (errno || !*arg || *end) {
-		return -INFINITY;
-	}
-	return ret;
-}
-
-static int run(char **argv) {
+static int run_program(char **argv) {
 	char *pname = *argv++;
 	if (!*argv) {
-		printf_e("Usage: %s [arguments] <command> <SRT files to edit>\n"
+		printf_safe("Usage: %s [arguments] <command> <SRT files to edit>\n"
 			"\n"
 			"command:\n"
 			"    verify          check SRT file for common format problems\n"
@@ -254,24 +240,25 @@ static int run(char **argv) {
 		return 1;
 	}
 
-	long from = LONG_MIN;
-	long to = LONG_MIN;
+	long from = LONG_MIN, to = LONG_MIN;
 	int rewrite = 0;
 	long diff = 0;
 	float diff_fps = 0;
 
 	while (*argv) {
 		char *arg = *argv++;
-		char *ptr;
+
 		if (!strcmp(arg, "-from") && *argv) {
-			from = longarg(*argv++);
-			if (from == LONG_MIN) {
+			char *in = *argv++;
+			int err = parse_long(&in, &from, 0);
+			if (err || *in) {
 				fprintf(stderr, "Invalid argument: %s\n", arg);
 				return 2;
 			}
 		} else if (!strcmp(arg, "-to") && *argv) {
-			to = longarg(*argv++);
-			if (to == LONG_MIN) {
+			char *in = *argv++;
+			int err = parse_long(&in, &to, 0);
+			if (err || *in) {
 				fprintf(stderr, "Invalid argument: %s\n", arg);
 				return 2;
 			}
@@ -280,12 +267,13 @@ static int run(char **argv) {
 		} else if (!strcmp(arg, "fix")) {
 			rewrite = 1;
 			break;
-		} else if ((ptr = strchr(arg, '/'))) {
-			*ptr = '\0';
-			float fps_from = floatarg(arg);
-			*ptr = '/';
-			float fps_to = floatarg(ptr + 1);
-			if (fps_from == -INFINITY || fps_to == -INFINITY || !fps_from || !fps_to) {
+		} else if (strchr(arg, '/')) {
+			char *in = arg;
+			float fps_from, fps_to;
+			int err = parse_float(&in, &fps_from);
+			err += parse_char_match(&in, '/');
+			err += parse_float(&in, &fps_to);
+			if (err || *in || !fps_from || !fps_to) {
 				fprintf(stderr, "Invalid command: %s\n", arg);
 				return 2;
 			}
@@ -293,8 +281,9 @@ static int run(char **argv) {
 			rewrite = 1;
 			break;
 		} else {
-			diff = longarg(arg);
-			if (diff == LONG_MIN) {
+			char *in = arg;
+			int err = parse_long(&in, &diff, 0);
+			if (err || *in) {
 				fprintf(stderr, "Invalid command: %s\n", arg);
 				return 2;
 			}
@@ -308,23 +297,17 @@ static int run(char **argv) {
 	}
 
 	struct res c = {0};
-	regcomp_e(&c.reg1, "^([^\r\n]*)([\r\n]*)$", REG_EXTENDED);
-	regcomp_e(&c.reg2, "^[0-9]{1,8}$", REG_EXTENDED);
-	regcomp_e(&c.reg3, "^" TIMEREGEX " --> " TIMEREGEX "$", REG_EXTENDED);
 	if (rewrite) {
 		sbuffer_init(&c.out);
 	}
 
 	int ret = 0;
 	while (*argv) {
-		if (process_arg(*argv++, from, to, rewrite, diff, diff_fps, &c)) {
+		if (process_filename(*argv++, from, to, rewrite, diff, diff_fps, &c)) {
 			ret = 2;
 		}
 	}
 
-	regfree(&c.reg1);
-	regfree(&c.reg2);
-	regfree(&c.reg3);
 	free(c.in);
 	if (rewrite) {
 		sbuffer_destroy(&c.out);
@@ -334,7 +317,7 @@ static int run(char **argv) {
 }
 
 int main(int argc, char **argv) {
-	int ret = run(argv);
-	fflush_e(stdout);
+	int ret = run_program(argv);
+	fflush_safe(stdout);
 	return ret;
 }

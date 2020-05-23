@@ -8,116 +8,62 @@
 #include <dirent.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
-#include "utils/stdlib_e.h"
-#include "utils/stdio_e.h"
-#include "utils/unistd_e.h"
-#include "utils/syswait_e.h"
+#include "utils/stdlib_utils.h"
+#include "utils/stdio_utils.h"
+#include "utils/unistd_utils.h"
+#include "utils/sbuffer.h"
 
-static char *combine_path(const char *dir, const char *file) {
-	char *ret;
-	if (dir[strlen(dir) - 1] == '/' || file[0] == '/') {
-		asprintf_e(&ret, "%s%s", dir, file);
-	} else {
-		asprintf_e(&ret, "%s/%s", dir, file);
+static int add_to_path(struct sbuffer *path, const char *subpath, int do_mkdir) {
+	if (sbuffer_last_c(path) == '/') {
+		sbuffer_rem(path, 1);
 	}
-	return ret;
-}
 
-static int prepdir(const char *pathname) {
-	printf_e("Creating directory: %s\n", pathname);
-	if (mkdir(pathname, 0755) && errno != EEXIST) {
-		fprintf(stderr, "Error creating directory %s: %s\n", pathname, strerror(errno));
-		return 2;
-	}
-	return 0;
-}
+	char *next;
+	do {
+		next = strchrnul(subpath, '/');
+		if (next != subpath) {
+			sbuffer_add_c(path, '/');
+			sbuffer_add_sn(path, subpath, (size_t) (next - subpath));
 
-static int prepdir_rec(char *path, size_t base_length) {
-	char *cur = path + base_length;
-	while (1) {
-		char *new = strchrnul(cur, '/');
-		if (new != cur) {
-			char orig = *new;
-			*new = '\0';
-			int ret = prepdir(path);
-			*new = orig;
-			if (ret) {
-				return ret;
+			if (do_mkdir) {
+				printf_safe("Creating directory: %s\n", path->data);
+				if (mkdir(path->data, 0755) && errno != EEXIST) {
+					fprintf(stderr, "Error creating directory %s: %s\n",
+							path->data, strerror(errno));
+					return 2;
+				}
 			}
 		}
-		if (!*new) {
-			return 0;
-		}
-		cur = new + 1;
-	}
-}
-
-static int full_exec(const char *file, char *const argv[]) {
-	int pid = fork_e();
-	if (pid) {
-		int wstatus = 0;
-		waitpid_e(pid, &wstatus, 0);
-		if (!WIFEXITED(wstatus)) {
-			fprintf(stderr, "Editor didn't terminate normally\n");
-			return 2;
-		}
-		int code = WEXITSTATUS(wstatus);
-		if (code) {
-			fprintf(stderr, "Editor exited with error code %i\n", code);
-			return 2;
-		}
-	} else {
-		execvp(file, argv);
-		fprintf(stderr, "Error starting %s: %s\n", file, strerror(errno));
-		return 2;
-	}
+		subpath = next + 1;
+	} while (*next);
 	return 0;
 }
 
-static int process_file(char *in, char *out) {
-	char *dot = strrchr(out, '.');
+static int process_file(struct sbuffer *in, struct sbuffer *out) {
+	char *dot = strrchr(out->data, '.');
 	if (dot) {
 		if (!strcasecmp(dot, ".mp3") || !strcasecmp(dot, ".m4a")) {
-			const char *params[] = {"ffmpeg", "-y", "-i", in, "-vn", "-codec:a", "copy",
-				"-map_metadata", "-1", out, NULL};
-			return full_exec("ffmpeg", (char**) params);
-		} else if(!strcasecmp(dot, ".flac") || !strcasecmp(dot, ".ape")) {
+			const char *params[] = {"ffmpeg", "-y", "-i", in->data, "-vn", "-codec:a", "copy",
+				"-map_metadata", "-1", out->data, NULL};
+			return exec_and_wait("ffmpeg", params);
+		} else if (!strcasecmp(dot, ".flac") || !strcasecmp(dot, ".ape")) {
 			strcpy(dot, ".mp3");
-			const char *params[] = {"ffmpeg", "-y", "-i", in, "-vn", "-ab", "320k",
-				"-map_metadata", "-1", out, NULL};
-			return full_exec("ffmpeg", (char**) params);
+			const char *params[] = {"ffmpeg", "-y", "-i", in->data, "-vn", "-ab", "320k",
+				"-map_metadata", "-1", out->data, NULL};
+			return exec_and_wait("ffmpeg", params);
 		}
 	}
 	return 0;
 }
 
-static int process(char *in, char *out, unsigned char type_hint, int create);
-static int process_dir(char *in, char *out, DIR *d) {
-	int ret = 0;
-	struct dirent *de;
-	while (!(errno = 0) && (de = readdir(d))) {
-		if (strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
-			char *in_full = combine_path(in, de->d_name);
-			char *out_full = combine_path(out, de->d_name);
-			if (process(in_full, out_full, de->d_type, 1)) {
-				ret = 2;
-			}
-			free(in_full);
-			free(out_full);
-		}
-	}
-	if (errno) {
-		fprintf(stderr, "Error reading directory %s: %s\n", in, strerror(errno));
-		return 2;
-	}
-	return ret;
-}
+static int process_dir(struct sbuffer *in, struct sbuffer *out);
+static int process_dir_item(struct sbuffer *in, struct sbuffer *out, const char *subpath, unsigned char type_hint) {
+	add_to_path(in, subpath, 0);
 
-static int process(char *in, char *out, unsigned char type_hint, int create) {
 	if (type_hint == DT_UNKNOWN || type_hint == DT_LNK) {
 		struct stat statbuf;
-		if (stat(in, &statbuf)) {
-			fprintf(stderr, "Error retrieving entry %s: %s\n", in, strerror(errno));
+		if (stat(in->data, &statbuf)) {
+			fprintf(stderr, "Error retrieving entry %s: %s\n", in->data, strerror(errno));
 			return 2;
 		}
 		if (S_ISDIR(statbuf.st_mode)) {
@@ -126,40 +72,61 @@ static int process(char *in, char *out, unsigned char type_hint, int create) {
 	}
 
 	if (type_hint == DT_DIR) {
-		if (create) {
-			if (prepdir(out)) {
-				return 2;
-			}
-		}
-
-		DIR *d = opendir(in);
-		if (!d) {
-			fprintf(stderr, "Error opening directory %s: %s\n", in, strerror(errno));
+		if (add_to_path(out, subpath, 1)) {
 			return 2;
 		}
 
-		int ret = process_dir(in, out, d);
-
-		if (closedir(d)) {
-			fprintf(stderr, "Error closing directory %s: %s\n", in, strerror(errno));
-			return 2;
-		}
-
-		return ret;
+		return process_dir(in, out);
 	} else {
+		add_to_path(out, subpath, 0);
 		return process_file(in, out);
 	}
 }
 
-static int run(char **argv) {
+static int process_dir(struct sbuffer *in, struct sbuffer *out) {
+	DIR *d = opendir(in->data);
+	if (!d) {
+		fprintf(stderr, "Error opening directory %s: %s\n", in->data, strerror(errno));
+		return 2;
+	}
+
+	int ret = 0;
+
+	struct dirent *de;
+	while (!(errno = 0) && (de = readdir(d))) {
+		if (strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
+			size_t in_size = in->size;
+			size_t out_size = out->size;
+
+			if (process_dir_item(in, out, de->d_name, de->d_type)) {
+				ret = 2;
+			}
+
+			sbuffer_rem(in, in->size - in_size);
+			sbuffer_rem(out, out->size - out_size);
+		}
+	}
+	if (errno) {
+		fprintf(stderr, "Error reading directory %s: %s\n", in->data, strerror(errno));
+		ret = 2;
+	}
+	if (closedir(d)) {
+		fprintf(stderr, "Error closing directory %s: %s\n", in->data, strerror(errno));
+		ret = 2;
+	}
+
+	return ret;
+}
+
+static int run_program(char **argv) {
 	char *pname = *argv++;
 	if (!*argv) {
-		printf_e("Usage: %s -in <input dir> -out <output dir> <input subfiles, subdirs>\n", pname);
+		printf_safe("Usage: %s -in <input dir> -out <output dir> <input subfiles, subdirs>\n", pname);
 		return 1;
 	}
 
-	char *in = NULL;
-	char *out = NULL;
+	char *in_c = NULL;
+	char *out_c = NULL;
 
 	while (*argv && *argv[0] == '-') {
 		char *arg = *argv++;
@@ -167,35 +134,49 @@ static int run(char **argv) {
 		if (!strcmp(arg, "--")) {
 			break;
 		} else if (!strcmp(arg, "-in") && *argv) {
-			in = *argv++;
+			in_c = *argv++;
 		} else if (!strcmp(arg, "-out") && *argv) {
-			out = *argv++;
+			out_c = *argv++;
 		} else {
 			fprintf(stderr, "Invalid argument: %s\n", arg);
 			return 2;
 		}
 	}
-	if (!in || !out || !*argv) {
+	if (!in_c || !out_c || !*argv) {
 		fprintf(stderr, "Missing arguments\n");
 		return 2;
 	}
 
+	struct sbuffer in, out;
+	sbuffer_init(&in);
+	sbuffer_init(&out);
+
+	sbuffer_add_s(&in, in_c);
+	sbuffer_add_s(&out, out_c);
+
 	int ret = 0;
-	while (*argv) {
-		char *subpath = *argv++;
-		char *in_full = combine_path(in, subpath);
-		char *out_full = combine_path(out, subpath);
-		if (prepdir_rec(out_full, strlen(out)) || process(in_full, out_full, DT_DIR, 0)) {
+
+	char *subpath;
+	while ((subpath = *argv++)) {
+		size_t in_size = in.size;
+		size_t out_size = out.size;
+
+		if (process_dir_item(&in, &out, subpath, DT_DIR)) {
 			ret = 2;
 		}
-		free(in_full);
-		free(out_full);
+
+		sbuffer_rem(&in, in.size - in_size);
+		sbuffer_rem(&out, out.size - out_size);
 	}
+
+	sbuffer_destroy(&in);
+	sbuffer_destroy(&out);
+
 	return ret;
 }
 
 int main(int argc, char **argv) {
-	int ret = run(argv);
-	fflush_e(stdout);
+	int ret = run_program(argv);
+	fflush_safe(stdout);
 	return ret;
 }

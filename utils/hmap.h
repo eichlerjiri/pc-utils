@@ -1,13 +1,10 @@
 struct hmap_item {
-	void *key;
-	void *value;
+	void *key, *value;
 	struct hmap_item *next;
 };
 
 struct hmap {
-	size_t capacity;
-	size_t size;
-	size_t fill_limit;
+	size_t capacity, size, fill_limit;
 	size_t (*hash)(const void*);
 	int (*equals)(const void*, const void*);
 	struct hmap_item **data;
@@ -36,7 +33,7 @@ static void hmap_init(struct hmap *m, size_t (*hash)(const void*), int (*equals)
 	m->equals = equals;
 
 	size_t alloc_size = m->capacity * sizeof(struct hmap_item*);
-	m->data = malloc_e(alloc_size);
+	m->data = malloc_safe(alloc_size);
 	memset(m->data, 0, alloc_size);
 }
 
@@ -48,7 +45,7 @@ static void hmap_resize(struct hmap *m) {
 	m->fill_limit *= 2;
 
 	size_t alloc_size = m->capacity * sizeof(struct hmap_item*);
-	m->data = malloc_e(alloc_size);
+	m->data = malloc_safe(alloc_size);
 	memset(m->data, 0, alloc_size);
 
 	for (size_t i = 0; i < orig_capacity; i++) {
@@ -106,7 +103,7 @@ static void hmap_put(struct hmap *m, void *key, void *value) {
 		link = &item->next;
 	}
 
-	item = malloc_e(sizeof(struct hmap_item));
+	item = malloc_safe(sizeof(struct hmap_item));
 	item->next = NULL;
 	*link = item;
 

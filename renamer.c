@@ -5,14 +5,13 @@
 #include <string.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include "utils/stdlib_e.h"
-#include "utils/stdio_e.h"
-#include "utils/string_e.h"
-#include "utils/unistd_e.h"
-#include "utils/syswait_e.h"
+#include "utils/stdlib_utils.h"
+#include "utils/stdio_utils.h"
+#include "utils/string_utils.h"
+#include "utils/unistd_utils.h"
 #include "utils/alist.h"
 
-static int do_rename(char *old, char *new) {
+static int rename_file(char *old, char *new) {
 	if (strcmp(old, new)) {
 		if (access(old, F_OK)) {
 			fprintf(stderr, "File %s does not exist\n", old);
@@ -24,20 +23,15 @@ static int do_rename(char *old, char *new) {
 			fprintf(stderr, "Error renaming %s to %s: %s\n", old, new, strerror(errno));
 			return 2;
 		} else {
-			printf_e("Renamed %s to %s\n", old, new);
+			printf_safe("Renamed %s to %s\n", old, new);
 		}
 	}
 	return 0;
 }
 
-static int process(char **argv, size_t cnt, FILE *tmp, char **in, size_t *insize, struct alist *list) {
-	ssize_t linelen;
-	while ((linelen = getline_e(in, insize, tmp)) != -1) {
-		char *ind = *in;
-		if (ind[linelen - 1] == '\n') {
-			ind[linelen - 1] = '\0';
-		}
-		alist_add(list, strdup_e(ind));
+static int process_rename_list(char **argv, size_t cnt, FILE *tmp, char **in, size_t *insize, struct alist *list) {
+	while (getline_no_eol_safe(in, insize, tmp) != (size_t) -1) {
+		alist_add(list, strdup_safe(*in));
 	}
 
 	if (cnt != list->size) {
@@ -47,17 +41,40 @@ static int process(char **argv, size_t cnt, FILE *tmp, char **in, size_t *insize
 
 	int ret = 0;
 	for (size_t i = 0; i < cnt; i++) {
-		if (do_rename(argv[i], list->data[i])) {
+		if (rename_file(argv[i], list->data[i])) {
 			ret = 2;
 		}
 	}
 	return ret;
 }
 
-static int run(char **argv) {
+static int edit_and_rename(char **argv, size_t cnt, char *tmpfilename) {
+	const char *params[] = {"vim", tmpfilename, NULL};
+	if (exec_and_wait("vim", params)) {
+		return 2;
+	}
+
+	struct alist list;
+	alist_init(&list);
+
+	FILE *tmp = fopen_safe(tmpfilename, "r");
+
+	char *in = NULL;
+	size_t insize = 0;
+
+	int ret = process_rename_list(argv, cnt, tmp, &in, &insize, &list);
+
+	free(in);
+	fclose_safe(tmp);
+	alist_destroy(&list);
+
+	return ret;
+}
+
+static int run_program(char **argv) {
 	char *pname = *argv++;
 	if (!*argv) {
-		printf_e("Usage: %s <files to be renamed>\n", pname);
+		printf_safe("Usage: %s <files to be renamed>\n", pname);
 		return 1;
 	}
 
@@ -70,56 +87,19 @@ static int run(char **argv) {
 	}
 
 	char tmpfilename[] = "/tmp/renamer XXXXXX.txt";
-	FILE *tmp = fdopen_e(mkstemps_e(tmpfilename, 4), "w");
-
+	FILE *tmp = fdopen_safe(mkstemps_safe(tmpfilename, 4), "w");
 	for (size_t i = 0; i < cnt; i++) {
-		fprintf_e(tmp, "%s\n", argv[i]);
+		fprintf_safe(tmp, "%s\n", argv[i]);
 	}
+	fclose_safe(tmp);
 
-	fclose_e(tmp);
-
-	int pid = fork_e();
-	if (pid) {
-		int wstatus = 0;
-		waitpid_e(pid, &wstatus, 0);
-		if (!WIFEXITED(wstatus)) {
-			fprintf(stderr, "Editor didn't terminate normally\n");
-			return 2;
-		}
-		int code = WEXITSTATUS(wstatus);
-		if (code) {
-			fprintf(stderr, "Editor exited with error code %i\n", code);
-			return 2;
-		}
-	} else {
-		const char *params[] = {"vim", tmpfilename, NULL};
-		execvp("vim", (char**) params);
-		fprintf(stderr, "Error starting vim: %s\n", strerror(errno));
-		return 2;
-	}
-
-	struct alist list;
-	alist_init(&list);
-
-	tmp = fopen_e(tmpfilename, "r");
-
-	char *in = NULL;
-	size_t insize = 0;
-
-	int ret = process(argv, cnt, tmp, &in, &insize, &list);
-
-	free(in);
-
-	fclose_e(tmp);
-	remove_e(tmpfilename);
-
-	alist_destroy(&list);
-
+	int ret = edit_and_rename(argv, cnt, tmpfilename);
+	remove_safe(tmpfilename);
 	return ret;
 }
 
 int main(int argc, char **argv) {
-	int ret = run(argv);
-	fflush_e(stdout);
+	int ret = run_program(argv);
+	fflush_safe(stdout);
 	return ret;
 }
