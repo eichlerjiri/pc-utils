@@ -14,7 +14,7 @@
 #include "utils/sbuffer.h"
 
 static int add_to_path(struct sbuffer *path, const char *subpath, int do_mkdir) {
-	if (sbuffer_last_c(path) == '/') {
+	if (path->size && path->data[path->size - 1] == '/') {
 		sbuffer_rem(path, 1);
 	}
 

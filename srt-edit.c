@@ -52,6 +52,27 @@ static void print_srt_time(char *buffer, long millis) {
 	sprintf(buffer, "%02li:%02li:%02li,%03li", hours, minutes, secs, millis);
 }
 
+static int remove_newline(char *s, size_t length, const char *filename, unsigned long linenum, const char *fixing) {
+	if (strlen(s) != length) {
+		return 2;
+	}
+
+	while (*s && *s != '\r' && *s != '\n') {
+		s++;
+	}
+
+	if (strcmp(s, "\r\n")) {
+		if (strcmp(s, "\n") && strcmp(s, "\r")) {
+			return 2;
+		}
+
+		printf_safe("%s%s: line %lu: Invalid newline\n", fixing, filename, linenum);
+	}
+
+	*s = '\0';
+	return 0;
+}
+
 static int process_file(const char *filename, FILE *input, long from, long to, int rewrite, long diff, float diff_fps,
 		struct res *c) {
 	struct sbuffer *out = &c->out;
@@ -75,14 +96,10 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 		linenum++;
 		char *s = c->in;
 
-		if (!valid_line(s, linelen)) {
+		if (remove_newline(s, linelen, filename, linenum, fixing)) {
 			fprintf(stderr, "%s: line %lu: Invalid line format\n", filename, linenum);
 			return 2;
 		}
-		if (!ends_with(s, "\r\n")) {
-			printf_safe("%s%s: line %lu: Invalid newline\n", fixing, filename, linenum);
-		}
-		remove_newline(s);
 
 		char buffer[256];
 		if (state == 0) {

@@ -57,11 +57,3 @@ static void sbuffer_clear(struct sbuffer *buf) {
 	buf->size = 0;
 	buf->data[buf->size] = '\0';
 }
-
-static char sbuffer_last_c(struct sbuffer *buf) {
-	if (buf->size) {
-		return buf->data[buf->size - 1];
-	} else {
-		return '\0';
-	}
-}
