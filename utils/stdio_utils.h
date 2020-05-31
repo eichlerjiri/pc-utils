@@ -49,17 +49,17 @@ static int fflush_safe(FILE *stream) {
 	return ret;
 }
 
-static size_t getline_no_eol(char **lineptr, size_t *n, FILE *stream) {
-	size_t ret = (size_t) getline(lineptr, n, stream);
-	if (ret != (size_t) -1 && (*lineptr)[ret - 1] == '\n') {
+static ssize_t getline_no_eol(char **lineptr, size_t *n, FILE *stream) {
+	ssize_t ret = getline(lineptr, n, stream);
+	if (ret != -1 && (*lineptr)[ret - 1] == '\n') {
 		(*lineptr)[--ret] = '\0';
 	}
 	return ret;
 }
 
-static size_t getline_no_eol_safe(char **lineptr, size_t *n, FILE *stream) {
-	size_t ret = (size_t) getline_no_eol(lineptr, n, stream);
-	if (ret == (size_t) -1 && !feof(stream)) {
+static ssize_t getline_no_eol_safe(char **lineptr, size_t *n, FILE *stream) {
+	ssize_t ret = getline_no_eol(lineptr, n, stream);
+	if (ret == -1 && !feof(stream)) {
 		fprintf(stderr, "Read error: %s\n", strerror(errno));
 		exit(3);
 	}

@@ -34,7 +34,7 @@ static int process_file(char *filename, struct res *c) {
 
 	unsigned long linenum = 0;
 	size_t inlen;
-	while ((inlen = getline_no_eol(&c->in, &c->insize, input)) != (size_t) -1) {
+	while ((inlen = (size_t) getline_no_eol(&c->in, &c->insize, input)) != (size_t) -1) {
 		linenum++;
 
 		if (nonascii(c->in, inlen)) {

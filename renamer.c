@@ -30,7 +30,7 @@ static int rename_file(char *old, char *new) {
 }
 
 static int process_rename_list(char **argv, size_t cnt, FILE *tmp, char **in, size_t *insize, struct alist *list) {
-	while (getline_no_eol_safe(in, insize, tmp) != (size_t) -1) {
+	while (getline_no_eol_safe(in, insize, tmp) != -1) {
 		alist_add(list, strdup_safe(*in));
 	}
 

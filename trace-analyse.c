@@ -42,7 +42,7 @@ static int parse_line(char *in, char **flag, char **type, char **function, struc
 
 static int process_file(FILE *input, char *filename, struct res *c) {
 	unsigned long linenum = 0;
-	while (getline_no_eol(&c->in, &c->insize, input) != (size_t) -1) {
+	while (getline_no_eol(&c->in, &c->insize, input) != -1) {
 		linenum++;
 
 		char *flag, *type, *function;
