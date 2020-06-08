@@ -8,25 +8,25 @@
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
 #include "utils/string_utils.h"
-#include "utils/sbuffer.h"
+#include "utils/alist.h"
 #include "utils/parser.h"
 
 struct res {
 	size_t insize;
 	char *in;
-	struct sbuffer out;
+	struct alist out;
 };
 
 static int parse_srt_time(char **str, long *res, const char *filename, unsigned long linenum, const char *fixing) {
-	long hours, minutes, seconds, millis;
+	unsigned long hours, minutes, seconds, millis;
 	char dot = '\0';
-	int err = parse_long(str, &hours, 1);
+	int err = parse_unsigned_long_strict(str, &hours);
 	err += parse_char_match(str, ':');
-	err += parse_long(str, &minutes, 1);
+	err += parse_unsigned_long_strict(str, &minutes);
 	err += parse_char_match(str, ':');
-	err += parse_long(str, &seconds, 1);
+	err += parse_unsigned_long_strict(str, &seconds);
 	err += parse_char(str, &dot);
-	err += parse_long(str, &millis, 1);
+	err += parse_unsigned_long_strict(str, &millis);
 
 	if (err || minutes >= 60 || seconds >= 60 || millis > 1000 || (dot != '.' && dot != ',')) {
 		return 2;
@@ -38,7 +38,7 @@ static int parse_srt_time(char **str, long *res, const char *filename, unsigned 
 		printf_safe("%s%s: line %lu: Wrong millis format\n", fixing, filename, linenum);
 	}
 
-	*res = millis + 1000 * (seconds + 60 * (minutes + (60 * hours)));
+	*res = (long) (millis + 1000 * (seconds + 60 * (minutes + (60 * hours))));
 	return 0;
 }
 
@@ -73,9 +73,8 @@ static int remove_newline(char *s, size_t length, const char *filename, unsigned
 	return 0;
 }
 
-static int process_file(const char *filename, FILE *input, long from, long to, int rewrite, long diff, float diff_fps,
-		struct res *c) {
-	struct sbuffer *out = &c->out;
+static int process_file(const char *filename, FILE *input, long from, long to, int rewrite, long diff, float diff_fps, struct res *c) {
+	struct alist *out = &c->out;
 
 	const char *fixing;
 	if (rewrite) {
@@ -85,8 +84,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 	}
 
 	int state = 0;
-	long subnum = 0;
-	long subnum_write = 0;
+	unsigned long subnum = 0, subnum_write = 0;
 	long last_millis = 0;
 	size_t last_finished_pos = 0;
 
@@ -108,8 +106,8 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 				continue;
 			}
 
-			long subnum_cur;
-			int err = parse_long(&s, &subnum_cur, 1);
+			unsigned long subnum_cur;
+			int err = parse_unsigned_long_strict(&s, &subnum_cur);
 			if (err || *s) {
 				fprintf(stderr, "%s: line %lu: Invalid format\n", filename, linenum);
 				return 2;
@@ -122,7 +120,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 
 			if (rewrite) {
 				sprintf(buffer, "%li\r\n", ++subnum_write);
-				sbuffer_add_s(out, buffer);
+				alist_add_s(out, buffer);
 			}
 
 			state = 1;
@@ -137,8 +135,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 			}
 
 			if (rewrite) {
-				if ((from == LONG_MIN || from * 1000 <= millis1)
-						&& (to == LONG_MIN || to * 1000 > millis1)) {
+				if ((from == LONG_MIN || from * 1000 <= millis1) && (to == LONG_MIN || to * 1000 > millis1)) {
 					long f;
 					if (from != LONG_MIN) {
 						f = from * 1000;
@@ -158,7 +155,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 				print_srt_time(srtbuf1, millis1);
 				print_srt_time(srtbuf2, millis2);
 				sprintf(buffer, "%s --> %s\r\n", srtbuf1, srtbuf2);
-				sbuffer_add_s(out, buffer);
+				alist_add_s(out, buffer);
 			}
 
 			if (millis1 >= millis2) {
@@ -174,8 +171,8 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 			state = 3;
 
 			if (rewrite) {
-				sbuffer_add_s(out, s);
-				sbuffer_add_s(out, "\r\n");
+				alist_add_s(out, s);
+				alist_add_s(out, "\r\n");
 			}
 			if (!*s) {
 				last_finished_pos = out->size;
@@ -192,7 +189,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 		printf_safe("%s%s: line %lu: Invalid end of file\n", fixing, filename, linenum);
 
 		if (rewrite) {
-			sbuffer_rem(out, out->size - last_finished_pos);
+			alist_rem_c(out, out->size - last_finished_pos);
 		}
 	}
 
@@ -221,8 +218,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 	return 0;
 }
 
-static int process_filename(const char *filename, long from, long to, int rewrite, long diff, float diff_fps,
-		struct res *c) {
+static int process_filename(const char *filename, long from, long to, int rewrite, long diff, float diff_fps, struct res *c) {
 	FILE *input = fopen(filename, "r");
 	if (!input) {
 		fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
@@ -267,14 +263,14 @@ static int run_program(char **argv) {
 
 		if (!strcmp(arg, "-from") && *argv) {
 			char *in = *argv++;
-			int err = parse_long(&in, &from, 0);
+			int err = parse_long(&in, &from);
 			if (err || *in) {
 				fprintf(stderr, "Invalid argument: %s\n", arg);
 				return 2;
 			}
 		} else if (!strcmp(arg, "-to") && *argv) {
 			char *in = *argv++;
-			int err = parse_long(&in, &to, 0);
+			int err = parse_long(&in, &to);
 			if (err || *in) {
 				fprintf(stderr, "Invalid argument: %s\n", arg);
 				return 2;
@@ -299,7 +295,7 @@ static int run_program(char **argv) {
 			break;
 		} else {
 			char *in = arg;
-			int err = parse_long(&in, &diff, 0);
+			int err = parse_long(&in, &diff);
 			if (err || *in) {
 				fprintf(stderr, "Invalid command: %s\n", arg);
 				return 2;
@@ -315,7 +311,7 @@ static int run_program(char **argv) {
 
 	struct res c = {0};
 	if (rewrite) {
-		sbuffer_init(&c.out);
+		alist_init_c(&c.out);
 	}
 
 	int ret = 0;
@@ -327,7 +323,7 @@ static int run_program(char **argv) {
 
 	free(c.in);
 	if (rewrite) {
-		sbuffer_destroy(&c.out);
+		alist_destroy_c(&c.out);
 	}
 
 	return ret;

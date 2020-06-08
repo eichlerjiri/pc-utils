@@ -7,36 +7,36 @@
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
 #include "utils/string_utils.h"
+#include "utils/alist.h"
 #include "utils/hmap.h"
-#include "utils/sbuffer.h"
 #include "utils/parser.h"
 
 struct res {
 	char *in;
 	size_t insize;
 	struct hmap map;
-	struct sbuffer sb;
+	struct alist sb;
 };
 
-static int parse_line(char *in, char **flag, char **type, char **function, struct sbuffer *sb) {
-	sbuffer_clear(sb);
+static int parse_line(char *in, char **flag, char **type, char **function, struct alist *sb) {
+	alist_rem_c(sb, sb->size);
 
 	size_t flag_pos = sb->size;
 	int err = parse_word(&in, sb);
-	sbuffer_add_c(sb, '\0');
+	alist_add_c(sb, '\0');
 
 	size_t type_pos = sb->size;
 	err += parse_word(&in, sb);
-	sbuffer_add_c(sb, ' ');
+	alist_add_c(sb, ' ');
 	err += parse_word(&in, sb);
-	sbuffer_add_c(sb, '\0');
+	alist_add_c(sb, '\0');
 
 	size_t function_pos = sb->size;
 	err += parse_word(&in, sb);
 
-	*flag = sb->data + flag_pos;
-	*type = sb->data + type_pos;
-	*function  = sb->data + function_pos;
+	*flag = sb->cdata + flag_pos;
+	*type = sb->cdata + type_pos;
+	*function  = sb->cdata + function_pos;
 	return err;
 }
 
@@ -105,13 +105,13 @@ static int run_program(char **argv) {
 
 	struct res c = {0};
 	hmap_init(&c.map, hash_str, equals_str);
-	sbuffer_init(&c.sb);
+	alist_init_c(&c.sb);
 
 	int ret = process_file(input, filename, &c);
 
 	free(c.in);
 	hmap_destroy(&c.map);
-	sbuffer_destroy(&c.sb);
+	alist_destroy_c(&c.sb);
 
 	if (fclose(input)) {
 		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));

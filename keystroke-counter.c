@@ -30,10 +30,8 @@ static int run_program(char **argv) {
 	unsigned long count = 0;
 	struct input_event ev;
 	while (fread(&ev, sizeof(ev), 1, input)) {
-		if (ev.type == 1 && ev.value == 1
-				&& ev.code != 42 && ev.code != 29 // L-shift, L-ctrl
-				&& ev.code != 125 && ev.code != 56 // L-win, L-alt
-				&& ev.code != 100 && ev.code != 54 && ev.code != 97) { // R-alt, R-shift, R-ctrl
+		// L-shift, L-ctrl, L-win, L-alt, R-alt, R-shift, R-ctrl
+		if (ev.type == 1 && ev.value == 1 && ev.code != 42 && ev.code != 29 && ev.code != 125 && ev.code != 56 && ev.code != 100 && ev.code != 54 && ev.code != 97) {
 			count++;
 			printf_safe("%lu\n", count);
 		}

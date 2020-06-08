@@ -11,25 +11,24 @@
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
 #include "utils/unistd_utils.h"
-#include "utils/sbuffer.h"
+#include "utils/alist.h"
 
-static int add_to_path(struct sbuffer *path, const char *subpath, int do_mkdir) {
-	if (path->size && path->data[path->size - 1] == '/') {
-		sbuffer_rem(path, 1);
+static int add_to_path(struct alist *path, const char *subpath, int do_mkdir) {
+	if (path->size && path->cdata[path->size - 1] == '/') {
+		alist_rem_c(path, 1);
 	}
 
 	char *next;
 	do {
 		next = strchrnul(subpath, '/');
 		if (next != subpath) {
-			sbuffer_add_c(path, '/');
-			sbuffer_add_sn(path, subpath, (size_t) (next - subpath));
+			alist_add_c(path, '/');
+			alist_add_sn(path, subpath, (size_t) (next - subpath));
 
 			if (do_mkdir) {
-				printf_safe("Creating directory: %s\n", path->data);
-				if (mkdir(path->data, 0755) && errno != EEXIST) {
-					fprintf(stderr, "Error creating directory %s: %s\n",
-							path->data, strerror(errno));
+				printf_safe("Creating directory: %s\n", path->cdata);
+				if (mkdir(path->cdata, 0755) && errno != EEXIST) {
+					fprintf(stderr, "Error creating directory %s: %s\n", path->cdata, strerror(errno));
 					return 2;
 				}
 			}
@@ -39,31 +38,29 @@ static int add_to_path(struct sbuffer *path, const char *subpath, int do_mkdir) 
 	return 0;
 }
 
-static int process_file(struct sbuffer *in, struct sbuffer *out) {
-	char *dot = strrchr(out->data, '.');
+static int process_file(struct alist *in, struct alist *out) {
+	char *dot = strrchr(out->cdata, '.');
 	if (dot) {
 		if (!strcasecmp(dot, ".mp3") || !strcasecmp(dot, ".m4a")) {
-			const char *params[] = {"ffmpeg", "-y", "-i", in->data, "-vn", "-codec:a", "copy",
-				"-map_metadata", "-1", out->data, NULL};
-			return exec_and_wait("ffmpeg", params);
+			const char *params[] = {"ffmpeg", "-y", "-i", in->cdata, "-vn", "-codec:a", "copy", "-map_metadata", "-1", out->cdata, NULL};
+			return exec_and_wait(params[0], params);
 		} else if (!strcasecmp(dot, ".flac") || !strcasecmp(dot, ".ape")) {
 			strcpy(dot, ".mp3");
-			const char *params[] = {"ffmpeg", "-y", "-i", in->data, "-vn", "-ab", "320k",
-				"-map_metadata", "-1", out->data, NULL};
-			return exec_and_wait("ffmpeg", params);
+			const char *params[] = {"ffmpeg", "-y", "-i", in->cdata, "-vn", "-ab", "320k", "-map_metadata", "-1", out->cdata, NULL};
+			return exec_and_wait(params[0], params);
 		}
 	}
 	return 0;
 }
 
-static int process_dir(struct sbuffer *in, struct sbuffer *out);
-static int process_dir_item(struct sbuffer *in, struct sbuffer *out, const char *subpath, unsigned char type_hint) {
+static int process_dir(struct alist *in, struct alist *out);
+static int process_dir_item(struct alist *in, struct alist *out, const char *subpath, unsigned char type_hint) {
 	add_to_path(in, subpath, 0);
 
 	if (type_hint == DT_UNKNOWN || type_hint == DT_LNK) {
 		struct stat statbuf;
-		if (stat(in->data, &statbuf)) {
-			fprintf(stderr, "Error retrieving entry %s: %s\n", in->data, strerror(errno));
+		if (stat(in->cdata, &statbuf)) {
+			fprintf(stderr, "Error retrieving entry %s: %s\n", in->cdata, strerror(errno));
 			return 2;
 		}
 		if (S_ISDIR(statbuf.st_mode)) {
@@ -83,10 +80,10 @@ static int process_dir_item(struct sbuffer *in, struct sbuffer *out, const char 
 	}
 }
 
-static int process_dir(struct sbuffer *in, struct sbuffer *out) {
-	DIR *d = opendir(in->data);
+static int process_dir(struct alist *in, struct alist *out) {
+	DIR *d = opendir(in->cdata);
 	if (!d) {
-		fprintf(stderr, "Error opening directory %s: %s\n", in->data, strerror(errno));
+		fprintf(stderr, "Error opening directory %s: %s\n", in->cdata, strerror(errno));
 		return 2;
 	}
 
@@ -102,16 +99,16 @@ static int process_dir(struct sbuffer *in, struct sbuffer *out) {
 				ret = 2;
 			}
 
-			sbuffer_rem(in, in->size - in_size);
-			sbuffer_rem(out, out->size - out_size);
+			alist_rem_c(in, in->size - in_size);
+			alist_rem_c(out, out->size - out_size);
 		}
 	}
 	if (errno) {
-		fprintf(stderr, "Error reading directory %s: %s\n", in->data, strerror(errno));
+		fprintf(stderr, "Error reading directory %s: %s\n", in->cdata, strerror(errno));
 		ret = 2;
 	}
 	if (closedir(d)) {
-		fprintf(stderr, "Error closing directory %s: %s\n", in->data, strerror(errno));
+		fprintf(stderr, "Error closing directory %s: %s\n", in->cdata, strerror(errno));
 		ret = 2;
 	}
 
@@ -147,12 +144,12 @@ static int run_program(char **argv) {
 		return 2;
 	}
 
-	struct sbuffer in, out;
-	sbuffer_init(&in);
-	sbuffer_init(&out);
+	struct alist in, out;
+	alist_init_c(&in);
+	alist_init_c(&out);
 
-	sbuffer_add_s(&in, in_c);
-	sbuffer_add_s(&out, out_c);
+	alist_add_s(&in, in_c);
+	alist_add_s(&out, out_c);
 
 	int ret = 0;
 
@@ -165,12 +162,12 @@ static int run_program(char **argv) {
 			ret = 2;
 		}
 
-		sbuffer_rem(&in, in.size - in_size);
-		sbuffer_rem(&out, out.size - out_size);
+		alist_rem_c(&in, in.size - in_size);
+		alist_rem_c(&out, out.size - out_size);
 	}
 
-	sbuffer_destroy(&in);
-	sbuffer_destroy(&out);
+	alist_destroy_c(&in);
+	alist_destroy_c(&out);
 
 	return ret;
 }

@@ -1,4 +1,4 @@
-static int parse_word(char **str, struct sbuffer *res) {
+static int parse_word(char **str, struct alist *res) {
 	char *s = *str;
 	while (*s && isspace(*s)) {
 		s++;
@@ -6,7 +6,7 @@ static int parse_word(char **str, struct sbuffer *res) {
 
 	int err = 1;
 	while (*s && !isspace(*s)) {
-		sbuffer_add_c(res, *s++);
+		alist_add_c(res, *s++);
 		err = 0;
 	}
 	if (err) {
@@ -17,7 +17,7 @@ static int parse_word(char **str, struct sbuffer *res) {
 	return 0;
 }
 
-static int parse_long(char **str, long *res, int only_digits) {
+static int parse_long(char **str, long *res) {
 	char *end = NULL;
 	errno = 0;
 
@@ -26,12 +26,24 @@ static int parse_long(char **str, long *res, int only_digits) {
 		return 1;
 	}
 
-	if (only_digits) {
-		char *it = *str;
-		while (it < end) {
-			if (!isdigit(*it++)) {
-				return 1;
-			}
+	*res = ret;
+	*str = end;
+	return 0;
+}
+
+static int parse_unsigned_long_strict(char **str, unsigned long *res) {
+	char *end = NULL;
+	errno = 0;
+
+	unsigned long ret = strtoul(*str, &end, 10);
+	if (errno) {
+		return 1;
+	}
+
+	char *it = *str;
+	while (it < end) {
+		if (!isdigit(*it++)) {
+			return 1;
 		}
 	}
 

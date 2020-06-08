@@ -31,7 +31,7 @@ static int rename_file(char *old, char *new) {
 
 static int process_rename_list(char **argv, size_t cnt, FILE *tmp, char **in, size_t *insize, struct alist *list) {
 	while (getline_no_eol_safe(in, insize, tmp) != -1) {
-		alist_add(list, strdup_safe(*in));
+		alist_add_ptr(list, strdup_safe(*in));
 	}
 
 	if (cnt != list->size) {
@@ -41,7 +41,7 @@ static int process_rename_list(char **argv, size_t cnt, FILE *tmp, char **in, si
 
 	int ret = 0;
 	for (size_t i = 0; i < cnt; i++) {
-		if (rename_file(argv[i], list->data[i])) {
+		if (rename_file(argv[i], list->ptrdata[i])) {
 			ret = 2;
 		}
 	}
@@ -50,12 +50,12 @@ static int process_rename_list(char **argv, size_t cnt, FILE *tmp, char **in, si
 
 static int edit_and_rename(char **argv, size_t cnt, char *tmpfilename) {
 	const char *params[] = {"vim", tmpfilename, NULL};
-	if (exec_and_wait("vim", params)) {
+	if (exec_and_wait(params[0], params)) {
 		return 2;
 	}
 
 	struct alist list;
-	alist_init(&list);
+	alist_init_ptr(&list);
 
 	FILE *tmp = fopen_safe(tmpfilename, "r");
 
@@ -66,7 +66,7 @@ static int edit_and_rename(char **argv, size_t cnt, char *tmpfilename) {
 
 	free(in);
 	fclose_safe(tmp);
-	alist_destroy(&list);
+	alist_destroy_ptr(&list);
 
 	return ret;
 }

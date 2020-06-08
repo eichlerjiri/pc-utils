@@ -1,5 +1,4 @@
-static size_t iconv_direct(iconv_t *cd, const char *tocode, const char *fromcode,
-		char *in, size_t inlen, char **out, size_t *outsize) {
+static size_t iconv_direct(iconv_t *cd, const char *tocode, const char *fromcode, char *in, size_t inlen, char **out, size_t *outsize) {
 	if (!*cd) {
 		*cd = iconv_open(tocode, fromcode);
 		if (*cd == (iconv_t) -1) {
