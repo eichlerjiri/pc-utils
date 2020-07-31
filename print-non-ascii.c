@@ -8,11 +8,9 @@
 #include "utils/stdio_utils.h"
 #include "utils/iconv_utils.h"
 
-struct res {
-	iconv_t cd_utf8, cd_latin1;
-	size_t insize, outsize;
-	char *in, *out;
-};
+iconv_t cd_utf8, cd_latin1;
+size_t insize, outsize;
+char *inbuf, *outbuf;
 
 static int nonascii(char *in, size_t n) {
 	for (size_t i = 0; i < n; i++) {
@@ -23,7 +21,7 @@ static int nonascii(char *in, size_t n) {
 	return 0;
 }
 
-static int process_file(char *filename, struct res *c) {
+static int process_file(char *filename) {
 	FILE *input = fopen(filename, "r");
 	if (!input) {
 		fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
@@ -34,20 +32,20 @@ static int process_file(char *filename, struct res *c) {
 
 	unsigned long linenum = 0;
 	size_t inlen;
-	while ((inlen = (size_t) getline_no_eol(&c->in, &c->insize, input)) != (size_t) -1) {
+	while ((inlen = (size_t) getline_no_eol(&inbuf, &insize, input)) != (size_t) -1) {
 		linenum++;
 
-		if (nonascii(c->in, inlen)) {
+		if (nonascii(inbuf, inlen)) {
 			const char* code = "utf8";
-			size_t outlen = iconv_direct(&c->cd_utf8, "utf8", code, c->in, inlen, &c->out, &c->outsize);
+			size_t outlen = iconv_direct(&cd_utf8, "utf8", code, inbuf, inlen, &outbuf, &outsize);
 
 			if (outlen == (size_t) -1) {
 				code = "latin1";
-				outlen = iconv_direct(&c->cd_latin1, "utf8", code, c->in, inlen, &c->out, &c->outsize);
+				outlen = iconv_direct(&cd_latin1, "utf8", code, inbuf, inlen, &outbuf, &outsize);
 			}
 
 			printf_safe("%s: line %lu %s: ", filename, linenum, code);
-			fwrite_safe(c->out, outlen, 1, stdout);
+			fwrite_safe(outbuf, outlen, 1, stdout);
 			putchar_safe('\n');
 		}
 	}
@@ -70,19 +68,17 @@ static int run_program(char **argv) {
 		return 1;
 	}
 
-	struct res c = {0};
-
 	int ret = 0;
 	while (*argv) {
-		if (process_file(*argv++, &c)) {
+		if (process_file(*argv++)) {
 			ret = 2;
 		}
 	}
 
-	iconv_close_if_opened(c.cd_utf8);
-	iconv_close_if_opened(c.cd_latin1);
-	free(c.in);
-	free(c.out);
+	iconv_close_if_opened(cd_utf8);
+	iconv_close_if_opened(cd_latin1);
+	free(inbuf);
+	free(outbuf);
 
 	return ret;
 }

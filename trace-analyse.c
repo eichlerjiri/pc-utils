@@ -11,57 +11,55 @@
 #include "utils/hmap.h"
 #include "utils/parser.h"
 
-struct res {
-	char *in;
-	size_t insize;
-	struct hmap map;
-	struct alist sb;
-};
+size_t insize;
+char *inbuf;
+struct hmap map;
+struct alist sb;
 
-static int parse_line(char *in, char **flag, char **type, char **function, struct alist *sb) {
-	alist_rem_c(sb, sb->size);
+static int parse_line(char *in, char **flag, char **type, char **function) {
+	alist_rem_c(&sb, sb.size);
 
-	size_t flag_pos = sb->size;
-	int err = parse_word(&in, sb);
-	alist_add_c(sb, '\0');
+	size_t flag_pos = sb.size;
+	int err = parse_word(&in, &sb);
+	alist_add_c(&sb, '\0');
 
-	size_t type_pos = sb->size;
-	err += parse_word(&in, sb);
-	alist_add_c(sb, ' ');
-	err += parse_word(&in, sb);
-	alist_add_c(sb, '\0');
+	size_t type_pos = sb.size;
+	err += parse_word(&in, &sb);
+	alist_add_c(&sb, ' ');
+	err += parse_word(&in, &sb);
+	alist_add_c(&sb, '\0');
 
-	size_t function_pos = sb->size;
-	err += parse_word(&in, sb);
+	size_t function_pos = sb.size;
+	err += parse_word(&in, &sb);
 
-	*flag = sb->cdata + flag_pos;
-	*type = sb->cdata + type_pos;
-	*function  = sb->cdata + function_pos;
+	*flag = sb.cdata + flag_pos;
+	*type = sb.cdata + type_pos;
+	*function  = sb.cdata + function_pos;
 	return err;
 }
 
-static int process_file(FILE *input, char *filename, struct res *c) {
+static int process_file(FILE *input, char *filename) {
 	unsigned long linenum = 0;
-	while (getline_no_eol(&c->in, &c->insize, input) != -1) {
+	while (getline_no_eol(&inbuf, &insize, input) != -1) {
 		linenum++;
 
 		char *flag, *type, *function;
-		if (parse_line(c->in, &flag, &type, &function, &c->sb) || (strcmp(flag, "A") && strcmp(flag, "F"))) {
+		if (parse_line(inbuf, &flag, &type, &function) || (strcmp(flag, "A") && strcmp(flag, "F"))) {
 			fprintf(stderr, "Line %lu: Invalid format\n", linenum);
 			return 2;
 		}
 
 		if (!strcmp(flag, "A")) {
-			if (hmap_get(&c->map, type)) {
+			if (hmap_get(&map, type)) {
 				printf_safe("Line %lu: Repeated alloc: %s %s\n", linenum, type, function);
 			} else {
-				hmap_put(&c->map, strdup_safe(type), strdup_safe(function));
+				hmap_put(&map, strdup_safe(type), strdup_safe(function));
 			}
 		} else {
-			if (!hmap_get(&c->map, type)) {
+			if (!hmap_get(&map, type)) {
 				printf_safe("Line %lu: Free before alloc: %s %s\n", linenum, type, function);
 			} else {
-				hmap_remove(&c->map, type);
+				hmap_remove(&map, type);
 			}
 		}
 	}
@@ -69,10 +67,10 @@ static int process_file(FILE *input, char *filename, struct res *c) {
 		fprintf(stderr, "Error reading file %s: %s\n", filename, strerror(errno));
 		return 2;
 	}
-	if (c->map.size) {
+	if (map.size) {
 		printf_safe("Remaining:\n");
-		for (int i = 0; i < c->map.capacity; i++) {
-			struct hmap_item *item = c->map.data[i];
+		for (int i = 0; i < map.capacity; i++) {
+			struct hmap_item *item = map.data[i];
 			while (item) {
 				char *key = item->key;
 				char *value = item->value;
@@ -103,15 +101,14 @@ static int run_program(char **argv) {
 		return 2;
 	}
 
-	struct res c = {0};
-	hmap_init(&c.map, hash_str, equals_str);
-	alist_init_c(&c.sb);
+	hmap_init(&map, hash_str, equals_str);
+	alist_init_c(&sb);
 
-	int ret = process_file(input, filename, &c);
+	int ret = process_file(input, filename);
 
-	free(c.in);
-	hmap_destroy(&c.map);
-	alist_destroy_c(&c.sb);
+	free(inbuf);
+	hmap_destroy(&map);
+	alist_destroy_c(&sb);
 
 	if (fclose(input)) {
 		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));

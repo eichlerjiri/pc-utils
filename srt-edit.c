@@ -11,11 +11,9 @@
 #include "utils/alist.h"
 #include "utils/parser.h"
 
-struct res {
-	size_t insize;
-	char *in;
-	struct alist out;
-};
+size_t insize;
+char *inbuf;
+struct alist outbuf;
 
 static int parse_srt_time(char **str, long *res, const char *filename, unsigned long linenum, const char *fixing) {
 	unsigned long hours, minutes, seconds, millis;
@@ -73,11 +71,11 @@ static int remove_newline(char *s, size_t length, const char *filename, unsigned
 	return 0;
 }
 
-static int process_file(const char *filename, FILE *input, long from, long to, int rewrite, long diff, float diff_fps, struct res *c) {
-	struct alist *out = &c->out;
-
+static int process_file(const char *filename, FILE *input, long from, long to, int rewrite, long diff, float diff_fps) {
 	const char *fixing;
 	if (rewrite) {
+		alist_rem_c(&outbuf, outbuf.size);
+
 		fixing = "[FIXING] ";
 	} else {
 		fixing = "";
@@ -90,9 +88,9 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 
 	unsigned long linenum = 0;
 	size_t linelen;
-	while ((linelen = (size_t) getline(&c->in, &c->insize, input)) != (size_t) -1) {
+	while ((linelen = (size_t) getline(&inbuf, &insize, input)) != (size_t) -1) {
 		linenum++;
-		char *s = c->in;
+		char *s = inbuf;
 
 		if (remove_newline(s, linelen, filename, linenum, fixing)) {
 			fprintf(stderr, "%s: line %lu: Invalid line format\n", filename, linenum);
@@ -120,7 +118,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 
 			if (rewrite) {
 				sprintf(buffer, "%li\r\n", ++subnum_write);
-				alist_add_s(out, buffer);
+				alist_add_s(&outbuf, buffer);
 			}
 
 			state = 1;
@@ -155,7 +153,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 				print_srt_time(srtbuf1, millis1);
 				print_srt_time(srtbuf2, millis2);
 				sprintf(buffer, "%s --> %s\r\n", srtbuf1, srtbuf2);
-				alist_add_s(out, buffer);
+				alist_add_s(&outbuf, buffer);
 			}
 
 			if (millis1 >= millis2) {
@@ -171,11 +169,11 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 			state = 3;
 
 			if (rewrite) {
-				alist_add_s(out, s);
-				alist_add_s(out, "\r\n");
+				alist_add_s(&outbuf, s);
+				alist_add_s(&outbuf, "\r\n");
 			}
 			if (!*s) {
-				last_finished_pos = out->size;
+				last_finished_pos = outbuf.size;
 				state = 0;
 			}
 		}
@@ -189,7 +187,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 		printf_safe("%s%s: line %lu: Invalid end of file\n", fixing, filename, linenum);
 
 		if (rewrite) {
-			alist_rem_c(out, out->size - last_finished_pos);
+			alist_rem_c(&outbuf, outbuf.size - last_finished_pos);
 		}
 	}
 
@@ -202,7 +200,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 
 		int ret = 0;
 
-		if (fwrite(out->data, out->size, 1, output) != 1) {
+		if (fwrite(outbuf.data, outbuf.size, 1, output) != 1) {
 			fprintf(stderr, "Error writing file %s\n", filename);
 			ret = 2;
 		}
@@ -218,14 +216,14 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 	return 0;
 }
 
-static int process_filename(const char *filename, long from, long to, int rewrite, long diff, float diff_fps, struct res *c) {
+static int process_filename(const char *filename, long from, long to, int rewrite, long diff, float diff_fps) {
 	FILE *input = fopen(filename, "r");
 	if (!input) {
 		fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
 		return 2;
 	}
 
-	int ret = process_file(filename, input, from, to, rewrite, diff, diff_fps, c);
+	int ret = process_file(filename, input, from, to, rewrite, diff, diff_fps);
 
 	if (fclose(input)) {
 		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));
@@ -309,22 +307,21 @@ static int run_program(char **argv) {
 		return 2;
 	}
 
-	struct res c = {0};
 	if (rewrite) {
-		alist_init_c(&c.out);
+		alist_init_c(&outbuf);
 	}
 
 	int ret = 0;
 	while (*argv) {
-		if (process_filename(*argv++, from, to, rewrite, diff, diff_fps, &c)) {
+		if (process_filename(*argv++, from, to, rewrite, diff, diff_fps)) {
 			ret = 2;
 		}
 	}
 
-	free(c.in);
 	if (rewrite) {
-		alist_destroy_c(&c.out);
+		alist_destroy_c(&outbuf);
 	}
+	free(inbuf);
 
 	return ret;
 }
