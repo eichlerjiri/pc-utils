@@ -50,27 +50,6 @@ static void print_srt_time(char *buffer, long millis) {
 	sprintf(buffer, "%02li:%02li:%02li,%03li", hours, minutes, secs, millis);
 }
 
-static int remove_newline(char *s, size_t length, const char *filename, unsigned long linenum, const char *fixing) {
-	if (strlen(s) != length) {
-		return 2;
-	}
-
-	while (*s && *s != '\r' && *s != '\n') {
-		s++;
-	}
-
-	if (strcmp(s, "\r\n")) {
-		if (strcmp(s, "\n") && strcmp(s, "\r")) {
-			return 2;
-		}
-
-		printf_safe("%s%s: line %lu: Invalid newline\n", fixing, filename, linenum);
-	}
-
-	*s = '\0';
-	return 0;
-}
-
 static int process_file(const char *filename, FILE *input, long from, long to, int rewrite, long diff, float diff_fps) {
 	const char *fixing;
 	if (rewrite) {
@@ -90,38 +69,41 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 	size_t linelen;
 	while ((linelen = (size_t) getline(&inbuf, &insize, input)) != (size_t) -1) {
 		linenum++;
+
+		char buffer[256];
 		char *s = inbuf;
 
-		if (remove_newline(s, linelen, filename, linenum, fixing)) {
+		if (parse_line_end(s, linelen, buffer)) {
 			fprintf(stderr, "%s: line %lu: Invalid line format\n", filename, linenum);
 			return 2;
 		}
+		if (strcmp(buffer, "\r\n")) {
+			printf_safe("%s%s: line %lu: Invalid newline\n", fixing, filename, linenum);
+		}
 
-		char buffer[256];
 		if (state == 0) {
 			if (!*s) {
 				printf_safe("%s%s: line %lu: Extra blank line\n", fixing, filename, linenum);
-				continue;
-			}
+			} else {
+				unsigned long subnum_cur;
+				int err = parse_unsigned_long_strict(&s, &subnum_cur);
+				if (err || *s) {
+					fprintf(stderr, "%s: line %lu: Invalid format\n", filename, linenum);
+					return 2;
+				}
 
-			unsigned long subnum_cur;
-			int err = parse_unsigned_long_strict(&s, &subnum_cur);
-			if (err || *s) {
-				fprintf(stderr, "%s: line %lu: Invalid format\n", filename, linenum);
-				return 2;
-			}
+				if (subnum_cur != subnum + 1) {
+					printf_safe("%s%s: line %lu: Invalid subtitle number\n", fixing, filename, linenum);
+				}
+				subnum = subnum_cur;
 
-			if (subnum_cur != subnum + 1) {
-				printf_safe("%s%s: line %lu: Invalid subtitle number\n", fixing, filename, linenum);
-			}
-			subnum = subnum_cur;
+				if (rewrite) {
+					sprintf(buffer, "%li\r\n", ++subnum_write);
+					alist_add_s(&outbuf, buffer);
+				}
 
-			if (rewrite) {
-				sprintf(buffer, "%li\r\n", ++subnum_write);
-				alist_add_s(&outbuf, buffer);
+				state = 1;
 			}
-
-			state = 1;
 		} else if (state == 1) {
 			long millis1, millis2;
 			int err = parse_srt_time(&s, &millis1, filename, linenum, fixing);
@@ -166,15 +148,25 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 
 			state = 2;
 		} else if (state == 2 || state == 3) {
-			state = 3;
-
 			if (rewrite) {
 				alist_add_s(&outbuf, s);
 				alist_add_s(&outbuf, "\r\n");
 			}
+
 			if (!*s) {
+				if (state == 2) {
+					printf_safe("%s%s: line %lu: No text\n", fixing, filename, linenum);
+
+					if (rewrite) {
+						alist_rem_c(&outbuf, outbuf.size - last_finished_pos);
+						subnum_write--;
+					}
+				}
+
 				last_finished_pos = outbuf.size;
 				state = 0;
+			} else {
+				state = 3;
 			}
 		}
 	}
@@ -187,7 +179,11 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 		printf_safe("%s%s: line %lu: Invalid end of file\n", fixing, filename, linenum);
 
 		if (rewrite) {
-			alist_rem_c(&outbuf, outbuf.size - last_finished_pos);
+			if (state == 3) {
+				alist_add_s(&outbuf, "\r\n");
+			} else {
+				alist_rem_c(&outbuf, outbuf.size - last_finished_pos);
+			}
 		}
 	}
 

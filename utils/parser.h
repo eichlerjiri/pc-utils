@@ -98,3 +98,21 @@ static int parse_string_match(char **str, const char *match) {
 	*str = s;
 	return 0;
 }
+
+static int parse_line_end(char *str, size_t linelen, char *res) {
+	if (strlen(str) != linelen) {
+		return 1;
+	}
+	while (*str && *str != '\r' && *str != '\n') {
+		str++;
+	}
+	if (*str && strcmp(str, "\r\n") && strcmp(str, "\n") && strcmp(str, "\r")) {
+		return 1;
+	}
+
+	if (res) {
+		strcpy(res, str);
+	}
+	*str = '\0';
+	return 0;
+}

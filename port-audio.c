@@ -10,8 +10,8 @@
 #include <sys/stat.h>
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
-#include "utils/unistd_utils.h"
 #include "utils/alist.h"
+#include "utils/exec.h"
 
 static int add_to_path(struct alist *path, const char *subpath, int do_mkdir) {
 	if (path->size && path->cdata[path->size - 1] == '/') {
@@ -43,11 +43,11 @@ static int process_file(struct alist *in, struct alist *out) {
 	if (dot) {
 		if (!strcasecmp(dot, ".mp3") || !strcasecmp(dot, ".m4a")) {
 			const char *params[] = {"ffmpeg", "-y", "-i", in->cdata, "-vn", "-codec:a", "copy", "-map_metadata", "-1", out->cdata, NULL};
-			return exec_and_wait(params[0], params);
+			return exec_and_wait(params[0], params, NULL);
 		} else if (!strcasecmp(dot, ".flac") || !strcasecmp(dot, ".ape")) {
 			strcpy(dot, ".mp3");
 			const char *params[] = {"ffmpeg", "-y", "-i", in->cdata, "-vn", "-ab", "320k", "-map_metadata", "-1", out->cdata, NULL};
-			return exec_and_wait(params[0], params);
+			return exec_and_wait(params[0], params, NULL);
 		}
 	}
 	return 0;

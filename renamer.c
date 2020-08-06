@@ -8,8 +8,8 @@
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
 #include "utils/string_utils.h"
-#include "utils/unistd_utils.h"
 #include "utils/alist.h"
+#include "utils/exec.h"
 
 char *inbuf;
 size_t insize;
@@ -49,7 +49,7 @@ static int process_rename_list(char **argv, size_t cnt, struct alist *list) {
 
 static int edit_and_rename(char **argv, size_t cnt, char *tmpfilename) {
 	const char *params[] = {"vim", tmpfilename, NULL};
-	if (exec_and_wait(params[0], params)) {
+	if (exec_and_wait(params[0], params, NULL)) {
 		return 2;
 	}
 

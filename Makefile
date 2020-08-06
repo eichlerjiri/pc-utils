@@ -1,6 +1,6 @@
 CFLAGS=-O2 -pedantic -Wall -Wwrite-strings -Wconversion -Wno-unused-function
 
-all: keystroke-counter port-audio print-non-ascii trace-analyse renamer srt-edit
+all: keystroke-counter port-audio print-non-ascii trace-analyse renamer srt-edit sub-to-srt
 phony:
 
 keystroke-counter: phony
@@ -14,4 +14,6 @@ trace-analyse: phony
 renamer: phony
 	gcc $(CFLAGS) -o $@ $@.c
 srt-edit: phony
+	gcc $(CFLAGS) -o $@ $@.c
+sub-to-srt: phony
 	gcc $(CFLAGS) -o $@ $@.c
