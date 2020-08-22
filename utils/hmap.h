@@ -8,7 +8,16 @@ struct hmap {
 	size_t (*hash)(const void*);
 	int (*equals)(const void*, const void*);
 	struct hmap_item **data;
+	int free_key;
 };
+
+static size_t hash_ptr(const void* key) {
+	return 31u * (unsigned long) key;
+}
+
+static int equals_ptr(const void* key1, const void* key2) {
+	return key1 == key2;
+}
 
 static size_t hash_str(const void* key) {
 	const unsigned char* str = key;
@@ -25,12 +34,13 @@ static int equals_str(const void* key1, const void* key2) {
 	return !strcmp(str1, str2);
 }
 
-static void hmap_init(struct hmap *m, size_t (*hash)(const void*), int (*equals)(const void*, const void*)) {
+static void hmap_init(struct hmap *m, size_t (*hash)(const void*), int (*equals)(const void*, const void*), int free_key) {
 	m->capacity = 8;
 	m->size = 0;
 	m->fill_limit = 6;
 	m->hash = hash;
 	m->equals = equals;
+	m->free_key = free_key;
 
 	size_t alloc_size = m->capacity * sizeof(struct hmap_item*);
 	m->data = malloc_safe(alloc_size);
@@ -69,7 +79,9 @@ static void hmap_destroy(struct hmap *m) {
 		struct hmap_item *item = m->data[i];
 		while (item) {
 			struct hmap_item *next = item->next;
-			free(item->key);
+			if (m->free_key) {
+				free(item->key);
+			}
 			free(item->value);
 			free(item);
 			item = next;
@@ -94,7 +106,9 @@ static void hmap_put(struct hmap *m, void *key, void *value) {
 	struct hmap_item *item;
 	while ((item = *link)) {
 		if (m->equals(key, item->key)) {
-			free(item->key);
+			if (m->free_key) {
+				free(item->key);
+			}
 			free(item->value);
 			item->key = key;
 			item->value = value;
@@ -121,7 +135,9 @@ static void hmap_remove(struct hmap *m, const void *key) {
 	struct hmap_item *item;
 	while ((item = *link)) {
 		if (m->equals(key, item->key)) {
-			free(item->key);
+			if (m->free_key) {
+				free(item->key);
+			}
 			free(item->value);
 			*link = item->next;
 			free(item);
