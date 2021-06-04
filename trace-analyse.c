@@ -120,6 +120,6 @@ static int run_program(char **argv) {
 
 int main(int argc, char **argv) {
 	int ret = run_program(argv);
-	fflush_safe(stdout);
+	flush_safe(stdout);
 	return ret;
 }

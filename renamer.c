@@ -53,16 +53,32 @@ static int edit_and_rename(char **argv, size_t cnt, char *tmpfilename) {
 		return 2;
 	}
 
+	FILE *tmp = fopen(tmpfilename, "r");
+	if (!tmp) {
+		fprintf(stderr, "Error opening file %s: %s\n", tmpfilename, strerror(errno));
+		return 2;
+	}
+
+	int ret = 0;
+
 	struct alist list;
 	alist_init_ptr(&list);
 
-	FILE *tmp = fopen_safe(tmpfilename, "r");
-	while (getline_no_eol_safe(&inbuf, &insize, tmp) != -1) {
+	while (getline_no_eol(&inbuf, &insize, tmp) != -1) {
 		alist_add_ptr(&list, strdup_safe(inbuf));
 	}
-	fclose_safe(tmp);
+	if (!feof(tmp)) {
+		fprintf(stderr, "Error reading file %s: %s\n", tmpfilename, strerror(errno));
+		ret = 2;
+	}
+	if (fclose(tmp)) {
+		fprintf(stderr, "Error closing file %s: %s\n", tmpfilename, strerror(errno));
+		ret = 2;
+	}
 
-	int ret = process_rename_list(argv, cnt, &list);
+	if (!ret) {
+		ret = process_rename_list(argv, cnt, &list);
+	}
 
 	alist_destroy_ptr(&list);
 
@@ -84,15 +100,44 @@ static int run_program(char **argv) {
 		}
 	}
 
-	char tmpfilename[] = "/tmp/renamer XXXXXX.txt";
-	FILE *tmp = fdopen_safe(mkstemps_safe(tmpfilename, 4), "w");
-	for (size_t i = 0; i < cnt; i++) {
-		fprintf_safe(tmp, "%s\n", argv[i]);
-	}
-	fclose_safe(tmp);
 
-	int ret = edit_and_rename(argv, cnt, tmpfilename);
-	remove_safe(tmpfilename);
+	char tmpfilename[] = "/tmp/renamer XXXXXX.txt";
+	int fd = mkstemps(tmpfilename, 4);
+	if (!fd) {
+		fprintf(stderr, "Error creating file %s: %s\n", tmpfilename, strerror(errno));
+		return 2;
+	}
+
+	int ret = 0;
+
+	FILE *tmp = fdopen(fd, "w");
+	if (!tmp) {
+		fprintf(stderr, "Error opening file %s: %s\n", tmpfilename, strerror(errno));
+		ret = 2;
+	}
+
+	if (!ret) {
+		for (size_t i = 0; i < cnt; i++) {
+			if (fprintf(tmp, "%s\n", argv[i]) < 0) {
+				fprintf(stderr, "Error reading file %s: %s\n", tmpfilename, strerror(errno));
+				ret = 2;
+				break;
+			}
+		}
+		if (fclose(tmp)) {
+			fprintf(stderr, "Error closing file %s: %s\n", tmpfilename, strerror(errno));
+			ret = 2;
+		}
+	}
+
+	if (!ret) {
+		ret = edit_and_rename(argv, cnt, tmpfilename);
+	}
+
+	if (remove(tmpfilename)) {
+		fprintf(stderr, "Error removing file %s: %s\n", tmpfilename, strerror(errno));
+		ret = 2;
+	}
 
 	free(inbuf);
 
@@ -101,6 +146,6 @@ static int run_program(char **argv) {
 
 int main(int argc, char **argv) {
 	int ret = run_program(argv);
-	fflush_safe(stdout);
+	flush_safe(stdout);
 	return ret;
 }

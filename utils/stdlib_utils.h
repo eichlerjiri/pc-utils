@@ -15,12 +15,3 @@ static void *realloc_safe(void *ptr, size_t size) {
 	}
 	return ret;
 }
-
-static int mkstemps_safe(char *template, int suffixlen) {
-	int ret = mkstemps(template, suffixlen);
-	if (!ret) {
-		fprintf(stderr, "Error making temporary file: %s\n", strerror(errno));
-		exit(3);
-	}
-	return ret;
-}

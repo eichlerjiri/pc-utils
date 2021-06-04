@@ -45,7 +45,7 @@ static int process_file(char *filename) {
 			}
 
 			printf_safe("%s: line %lu %s: ", filename, linenum, code);
-			fwrite_safe(outbuf, outlen, 1, stdout);
+			write_safe(outbuf, outlen, 1);
 			putchar_safe('\n');
 		}
 	}
@@ -85,6 +85,6 @@ static int run_program(char **argv) {
 
 int main(int argc, char **argv) {
 	int ret = run_program(argv);
-	fflush_safe(stdout);
+	flush_safe(stdout);
 	return ret;
 }
