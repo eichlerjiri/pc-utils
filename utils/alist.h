@@ -3,6 +3,7 @@ struct alist {
 	union {
 		void *data;
 		void **ptrdata;
+		char **cptrdata;
 		char *cdata;
 	};
 };

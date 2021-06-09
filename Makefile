@@ -1,6 +1,6 @@
 CFLAGS=-O2 -pedantic -Wall -Wwrite-strings -Wconversion -Wno-unused-function
 
-all: keystroke-counter port-audio print-non-ascii trace-analyse renamer srt-edit sub-to-srt dup-files password-gen
+all: keystroke-counter port-audio print-non-ascii trace-analyse renamer srt-edit sub-to-srt dup-files password-gen log-browser
 phony:
 
 keystroke-counter: phony
@@ -21,3 +21,5 @@ dup-files: phony
 	gcc $(CFLAGS) -o $@ $@.c
 password-gen: phony
 	gcc $(CFLAGS) -o $@ $@.c
+log-browser: phony
+	gcc $(CFLAGS) -o $@ $@.c -lncursesw
