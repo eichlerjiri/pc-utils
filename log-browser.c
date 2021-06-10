@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <string.h>
 #include <unistd.h>
+#include <locale.h>
 #include <ncurses.h>
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
@@ -255,6 +256,8 @@ static int run_program(char **argv) {
 }
 
 int main(int argc, char **argv) {
+	setlocale(LC_ALL, "");
+
 	alist_init_ptr(&lines);
 	alist_init_c(&collapsed);
 
