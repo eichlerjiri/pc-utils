@@ -101,7 +101,7 @@ static int run_program(char **argv) {
 		return 2;
 	}
 
-	hmap_init(&map, hash_str, equals_str, 1);
+	hmap_init(&map, hash_str, equals_str, free, free);
 	alist_init_c(&sb);
 
 	int ret = process_file(input, filename);

@@ -127,7 +127,7 @@ static int run_program(char **argv) {
 	}
 
 	generate_crc64_table(crc64_table);
-	hmap_init(&map, hash_ptr, equals_ptr, 0);
+	hmap_init(&map, hash_ptr, equals_ptr, nofree, free);
 
 	struct alist path;
 	alist_init_c(&path);
