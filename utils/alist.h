@@ -24,19 +24,15 @@ static void alist_init_c(struct alist *list) {
 	list->cdata[0] = '\0';
 }
 
-static void alist_destroy(struct alist *list) {
-	free(list->data);
-}
-
 static void alist_destroy_ptr(struct alist *list) {
 	for (size_t i = 0; i < list->size; i++) {
 		free(list->ptrdata[i]);
 	}
-	alist_destroy(list);
+	free(list->data);
 }
 
 static void alist_destroy_c(struct alist *list) {
-	alist_destroy(list);
+	free(list->data);
 }
 
 static void alist_assure_capacity(struct alist *list, size_t add) {
@@ -44,11 +40,6 @@ static void alist_assure_capacity(struct alist *list, size_t add) {
 		list->capacity *= 2;
 		list->data = realloc_safe(list->data, list->capacity * list->item_size);
 	}
-}
-
-static void* alist_add(struct alist *list) {
-	alist_assure_capacity(list, 1);
-	return list->cdata + list->size++;
 }
 
 static void alist_add_ptr(struct alist *list, void *ptr) {
@@ -73,11 +64,7 @@ static void alist_add_s(struct alist *list, const char *s) {
 	alist_add_sn(list, s, strlen(s));
 }
 
-static void alist_rem(struct alist *list, size_t n) {
-	list->size -= n;
-}
-
 static void alist_rem_c(struct alist *list, size_t n) {
-	alist_rem(list, n);
+	list->size -= n;
 	list->cdata[list->size] = '\0';
 }
