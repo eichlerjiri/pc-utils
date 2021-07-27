@@ -53,7 +53,7 @@ static void print_srt_time(char *buffer, long millis) {
 static int process_file(const char *filename, FILE *input, long from, long to, int rewrite, long diff, float diff_fps) {
 	const char *fixing;
 	if (rewrite) {
-		alist_rem_c(&outbuf, outbuf.size);
+		alist_resize_c(&outbuf, 0);
 
 		fixing = "[FIXING] ";
 	} else {
@@ -158,7 +158,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 					printf_safe("%s%s: line %lu: No text\n", fixing, filename, linenum);
 
 					if (rewrite) {
-						alist_rem_c(&outbuf, outbuf.size - last_finished_pos);
+						alist_resize_c(&outbuf, last_finished_pos);
 						subnum_write--;
 					}
 				}
@@ -182,7 +182,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 			if (state == 3) {
 				alist_add_s(&outbuf, "\r\n");
 			} else {
-				alist_rem_c(&outbuf, outbuf.size - last_finished_pos);
+				alist_resize_c(&outbuf, last_finished_pos);
 			}
 		}
 	}

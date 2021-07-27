@@ -98,7 +98,7 @@ static int process_dir(struct alist *path) {
 				ret = 2;
 			}
 
-			alist_rem_c(path, path->size - path_size);
+			alist_resize_c(path, path_size);
 		}
 	}
 	if (errno) {

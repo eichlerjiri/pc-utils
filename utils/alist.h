@@ -42,6 +42,12 @@ static void alist_assure_capacity(struct alist *list, size_t add) {
 	}
 }
 
+static void alist_resize_c(struct alist *list, size_t size) {
+	list->size = size;
+	alist_assure_capacity(list, 1);
+	list->cdata[list->size] = '\0';
+}
+
 static void alist_add_ptr(struct alist *list, void *ptr) {
 	alist_assure_capacity(list, 1);
 	list->ptrdata[list->size++] = ptr;
@@ -62,9 +68,4 @@ static void alist_add_sn(struct alist *list, const char *s, size_t n) {
 
 static void alist_add_s(struct alist *list, const char *s) {
 	alist_add_sn(list, s, strlen(s));
-}
-
-static void alist_rem_c(struct alist *list, size_t n) {
-	list->size -= n;
-	list->cdata[list->size] = '\0';
 }

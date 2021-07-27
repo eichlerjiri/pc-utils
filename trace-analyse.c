@@ -17,7 +17,7 @@ struct hmap map;
 struct alist sb;
 
 static int parse_line(char *in, char **flag, char **type, char **function) {
-	alist_rem_c(&sb, sb.size);
+	alist_resize_c(&sb, 0);
 
 	size_t flag_pos = sb.size;
 	int err = parse_word(&in, &sb);

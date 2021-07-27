@@ -20,12 +20,12 @@ struct alist outbuf, namebuf;
 static int find_video_file(const char *filename) {
 	const char *ext[] = {".avi", ".mkv", ".mp4", NULL};
 
-	alist_rem_c(&namebuf, namebuf.size);
+	alist_resize_c(&namebuf, 0);
 	alist_add_s(&namebuf, filename);
 
 	char *dot;
 	while ((dot = strrchr(namebuf.cdata, '.'))) {
-		alist_rem_c(&namebuf, (size_t) (dot - namebuf.cdata));
+		alist_resize_c(&namebuf, (size_t) (dot - namebuf.cdata));
 
 		for (int i = 0; ext[i]; i++) {
 			size_t orig_len = namebuf.size;
@@ -35,7 +35,7 @@ static int find_video_file(const char *filename) {
 				return 0;
 			}
 
-			alist_rem_c(&namebuf, namebuf.size - orig_len);
+			alist_resize_c(&namebuf, orig_len);
 		}
 	}
 
@@ -48,7 +48,7 @@ static int determine_fps(const char *filename, float *res) {
 		return 2;
 	}
 
-	alist_rem_c(&outbuf, outbuf.size);
+	alist_resize_c(&outbuf, 0);
 
 	const char *params[] = {"ffprobe", "-select_streams", "v", "-of", "default=noprint_wrappers=1:nokey=1", "-show_entries", "stream=r_frame_rate", namebuf.cdata, NULL};
 	if (exec_and_wait(params[0], params, &outbuf)) {
@@ -93,7 +93,7 @@ static int process_file(const char *filename, FILE *input) {
 		return 2;
 	}
 
-	alist_rem_c(&outbuf, outbuf.size);
+	alist_resize_c(&outbuf, 0);
 
 	unsigned long linenum = 0;
 	size_t linelen;
@@ -159,7 +159,7 @@ static int process_file(const char *filename, FILE *input) {
 		return 2;
 	}
 
-	alist_rem_c(&namebuf, namebuf.size);
+	alist_resize_c(&namebuf, 0);
 	alist_add_sn(&namebuf, filename, (size_t) (dot - filename));
 	alist_add_s(&namebuf, ".srt");
 

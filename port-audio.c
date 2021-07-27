@@ -15,7 +15,7 @@
 
 static int add_to_path(struct alist *path, const char *subpath, int do_mkdir) {
 	if (path->size && path->cdata[path->size - 1] == '/') {
-		alist_rem_c(path, 1);
+		alist_resize_c(path, path->size - 1);
 	}
 
 	char *next;
@@ -99,8 +99,8 @@ static int process_dir(struct alist *in, struct alist *out) {
 				ret = 2;
 			}
 
-			alist_rem_c(in, in->size - in_size);
-			alist_rem_c(out, out->size - out_size);
+			alist_resize_c(in, in_size);
+			alist_resize_c(out, out_size);
 		}
 	}
 	if (errno) {
@@ -162,8 +162,8 @@ static int run_program(char **argv) {
 			ret = 2;
 		}
 
-		alist_rem_c(&in, in.size - in_size);
-		alist_rem_c(&out, out.size - out_size);
+		alist_resize_c(&in, in_size);
+		alist_resize_c(&out, out_size);
 	}
 
 	alist_destroy_c(&in);
