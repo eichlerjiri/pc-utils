@@ -4,15 +4,19 @@
 #include <string.h>
 #include <unistd.h>
 #include <locale.h>
+#include <regex.h>
 #include <ncurses.h>
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
 #include "utils/string_utils.h"
+#include "utils/regex_utils.h"
 #include "utils/alist.h"
 
 size_t insize;
 char *inbuf;
 
+struct alist regexes;
+struct alist regexes_type;
 struct alist lines;
 struct alist collapsed;
 
@@ -197,14 +201,41 @@ static void run_gui(FILE *tty) {
 static int run_program(char **argv) {
 	char *pname = *argv++;
 	if (!*argv && isatty(fileno(stdin))) {
-		printf_safe("Usage: %s <log file>\n", pname);
+		printf_safe("Usage: %s [arguments] <log file>\n"
+			"\n"
+			"arguments:\n"
+			"    -in <regex>    regular expression to include (optional, can be specified multiple times)\n"
+			"    -ex <regex>    regular expression to exclude (optional, can be specified multiple times)\n", pname);
 		return 1;
+	}
+
+	while (*argv && *argv[0] == '-') {
+		char *arg = *argv++;
+
+		if (!strcmp(arg, "--")) {
+			break;
+		} else if ((!strcmp(arg, "-in") || !strcmp(arg, "-ex")) && *argv) {
+			regex_t regex;
+			int res = regcomp(&regex, *argv++, REG_EXTENDED | REG_NOSUB);
+			if (res) {
+				char buffer[4096];
+				regerror(res, &regex, buffer, sizeof(buffer));
+				fprintf(stderr, "Invalid regular expression: %s\n", buffer);
+				return 2;
+			}
+			alist_add(&regexes, &regex);
+			alist_add_c(&regexes_type, !strcmp(arg, "-in"));
+		} else {
+			fprintf(stderr, "Invalid argument: %s\n", arg);
+			return 2;
+		}
 	}
 
 	const char *filename = NULL;
 	if (*argv) {
 		filename = *argv++;
 	}
+
 	if (*argv) {
 		fprintf(stderr, "Too many arguments\n");
 		return 2;
@@ -224,9 +255,46 @@ static int run_program(char **argv) {
 
 	int ret = 0;
 
-	while (getline_no_eol(&inbuf, &insize, input) != -1) {
+	size_t last_mark = 0;
+	while (1) {
+		ssize_t res = getline_no_eol(&inbuf, &insize, input);
+
+		char additional = res != -1 && inbuf[0] == '\t' && lines.size;
+
+		if (!additional && lines.size) {
+			int include = 1;
+			if (regexes_type.size && regexes_type.cdata[regexes_type.size - 1]) {
+				include = 0;
+			}
+
+			regex_t *regexes_data = regexes.data;
+			for (size_t i = 0; i < regexes.size; i++) {
+				int match = 0;
+				for (size_t j = last_mark; j < lines.size; j++) {
+					if (!regexec_safe(regexes_data + i, lines.cptrdata[j], 0, NULL, 0)) {
+						match = 1;
+						break;
+					}
+				}
+				if (match) {
+					include = regexes_type.cdata[i];
+				}
+			}
+
+			if (!include) {
+				alist_resize_ptr(&lines, last_mark);
+				alist_resize_c(&collapsed, last_mark);
+			}
+
+			last_mark = lines.size;
+		}
+
+		if (res == -1) {
+			break;
+		}
+
 		alist_add_ptr(&lines, strdup_safe(inbuf));
-		alist_add_c(&collapsed, inbuf[0] == '\t' && collapsed.size != 0);
+		alist_add_c(&collapsed, additional);
 	}
 	if (!feof(input)) {
 		fprintf(stderr, "Error reading file %s: %s\n", filename, strerror(errno));
@@ -238,17 +306,23 @@ static int run_program(char **argv) {
 	}
 
 	if (!ret) {
-		FILE *tty = fopen("/dev/tty", "r+");
-		if (!tty) {
-			fprintf(stderr, "Error opening TTY: %s\n", strerror(errno));
-			return 2;
-		}
+		if (!isatty(fileno(stdout))) {
+			for (size_t i = 0; i < lines.size; i++) {
+				printf_safe("%s\n", lines.cptrdata[i]);
+			}
+		} else {
+			FILE *tty = fopen("/dev/tty", "r+");
+			if (!tty) {
+				fprintf(stderr, "Error opening TTY: %s\n", strerror(errno));
+				return 2;
+			}
 
-		run_gui(tty);
+			run_gui(tty);
 
-		if (fclose(tty)) {
-			fprintf(stderr, "Error closing TTY: %s\n", strerror(errno));
-			return 2;
+			if (fclose(tty)) {
+				fprintf(stderr, "Error closing TTY: %s\n", strerror(errno));
+				return 2;
+			}
 		}
 	}
 
@@ -258,11 +332,20 @@ static int run_program(char **argv) {
 int main(int argc, char **argv) {
 	setlocale(LC_ALL, "");
 
+	alist_init(&regexes, sizeof(regex_t));
+	alist_init_c(&regexes_type);
 	alist_init_ptr(&lines);
 	alist_init_c(&collapsed);
 
 	int ret = run_program(argv);
 
+	regex_t *regexes_data = regexes.data;
+	for (size_t i = 0; i < regexes.size; i++) {
+		regfree(regexes_data + i);
+	}
+
+	alist_destroy(&regexes);
+	alist_destroy_c(&regexes_type);
 	alist_destroy_ptr(&lines);
 	alist_destroy_c(&collapsed);
 

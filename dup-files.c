@@ -55,8 +55,7 @@ static int process_file(struct alist *path) {
 	return ret;
 }
 
-static int process_dir(struct alist *path);
-static int process_dir_item(struct alist *path, unsigned char type_hint) {
+static int process_item(struct alist *path, unsigned char type_hint) {
 	if (type_hint == DT_UNKNOWN || type_hint == DT_LNK) {
 		struct stat statbuf;
 		if (stat(path->cdata, &statbuf)) {
@@ -68,14 +67,12 @@ static int process_dir_item(struct alist *path, unsigned char type_hint) {
 		}
 	}
 
-	if (type_hint == DT_DIR) {
-		return process_dir(path);
-	} else {
+	if (type_hint == DT_REG) {
 		return process_file(path);
+	} else if (type_hint != DT_DIR) {
+		return 0;
 	}
-}
 
-static int process_dir(struct alist *path) {
 	DIR *d = opendir(path->cdata);
 	if (!d) {
 		fprintf(stderr, "Error opening directory %s: %s\n", path->cdata, strerror(errno));
@@ -94,7 +91,7 @@ static int process_dir(struct alist *path) {
 			}
 			alist_add_s(path, de->d_name);
 
-			if (process_dir_item(path, de->d_type)) {
+			if (process_item(path, de->d_type)) {
 				ret = 2;
 			}
 
@@ -134,7 +131,7 @@ static int run_program(char **argv) {
 
 	alist_add_s(&path, dir);
 
-	int ret = process_dir(&path);
+	int ret = process_item(&path, DT_DIR);
 
 	alist_destroy_c(&path);
 

@@ -24,15 +24,19 @@ static void alist_init_c(struct alist *list) {
 	list->cdata[0] = '\0';
 }
 
+static void alist_destroy(struct alist *list) {
+	free(list->data);
+}
+
 static void alist_destroy_ptr(struct alist *list) {
 	for (size_t i = 0; i < list->size; i++) {
 		free(list->ptrdata[i]);
 	}
-	free(list->data);
+	alist_destroy(list);
 }
 
 static void alist_destroy_c(struct alist *list) {
-	free(list->data);
+	alist_destroy(list);
 }
 
 static void alist_assure_capacity(struct alist *list, size_t add) {
@@ -42,10 +46,20 @@ static void alist_assure_capacity(struct alist *list, size_t add) {
 	}
 }
 
+static void alist_resize_ptr(struct alist *list, size_t size) {
+	list->size = size;
+	alist_assure_capacity(list, 0);
+}
+
 static void alist_resize_c(struct alist *list, size_t size) {
 	list->size = size;
 	alist_assure_capacity(list, 1);
 	list->cdata[list->size] = '\0';
+}
+
+static void alist_add(struct alist *list, void *ptr) {
+	alist_assure_capacity(list, 1);
+	memmove(list->cdata + list->item_size * list->size++, ptr, list->item_size);
 }
 
 static void alist_add_ptr(struct alist *list, void *ptr) {
@@ -61,7 +75,7 @@ static void alist_add_c(struct alist *list, char c) {
 
 static void alist_add_sn(struct alist *list, const char *s, size_t n) {
 	alist_assure_capacity(list, n + 1);
-	memcpy(list->cdata + list->size, s, n);
+	memmove(list->cdata + list->size, s, n);
 	list->size += n;
 	list->cdata[list->size] = '\0';
 }

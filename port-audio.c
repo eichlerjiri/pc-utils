@@ -53,8 +53,7 @@ static int process_file(struct alist *in, struct alist *out) {
 	return 0;
 }
 
-static int process_dir(struct alist *in, struct alist *out);
-static int process_dir_item(struct alist *in, struct alist *out, const char *subpath, unsigned char type_hint) {
+static int process_item(struct alist *in, struct alist *out, const char *subpath, unsigned char type_hint) {
 	add_to_path(in, subpath, 0);
 
 	if (type_hint == DT_UNKNOWN || type_hint == DT_LNK) {
@@ -68,19 +67,17 @@ static int process_dir_item(struct alist *in, struct alist *out, const char *sub
 		}
 	}
 
-	if (type_hint == DT_DIR) {
-		if (add_to_path(out, subpath, 1)) {
-			return 2;
-		}
-
-		return process_dir(in, out);
-	} else {
+	if (type_hint == DT_REG) {
 		add_to_path(out, subpath, 0);
 		return process_file(in, out);
+	} else if (type_hint != DT_DIR) {
+		return 0;
 	}
-}
 
-static int process_dir(struct alist *in, struct alist *out) {
+	if (add_to_path(out, subpath, 1)) {
+		return 2;
+	}
+
 	DIR *d = opendir(in->cdata);
 	if (!d) {
 		fprintf(stderr, "Error opening directory %s: %s\n", in->cdata, strerror(errno));
@@ -95,7 +92,7 @@ static int process_dir(struct alist *in, struct alist *out) {
 			size_t in_size = in->size;
 			size_t out_size = out->size;
 
-			if (process_dir_item(in, out, de->d_name, de->d_type)) {
+			if (process_item(in, out, de->d_name, de->d_type)) {
 				ret = 2;
 			}
 
@@ -158,7 +155,7 @@ static int run_program(char **argv) {
 		size_t in_size = in.size;
 		size_t out_size = out.size;
 
-		if (process_dir_item(&in, &out, subpath, DT_DIR)) {
+		if (process_item(&in, &out, subpath, DT_DIR)) {
 			ret = 2;
 		}
 
