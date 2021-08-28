@@ -44,3 +44,12 @@ static ssize_t getline_no_eol(char **lineptr, size_t *n, FILE *stream) {
 	}
 	return ret;
 }
+
+static int fileno_safe(FILE *stream) {
+	int ret = fileno(stream);
+	if (ret == -1) {
+		fprintf(stderr, "Error fileno: %s\n", strerror(errno));
+		exit(3);
+	}
+	return ret;
+}

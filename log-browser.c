@@ -9,7 +9,10 @@
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
 #include "utils/string_utils.h"
+#include "utils/unistd_utils.h"
+#include "utils/locale_utils.h"
 #include "utils/regex_utils.h"
+#include "utils/ncurses_utils.h"
 #include "utils/alist.h"
 
 size_t insize;
@@ -118,7 +121,7 @@ static void set_collapsed(char collapse) {
 }
 
 static void run_gui(FILE *tty) {
-	newterm(NULL, tty, tty);
+	SCREEN *screen = newterm_safe(NULL, tty, tty);
 	noecho();
 
 	refresh_screen();
@@ -127,7 +130,7 @@ static void run_gui(FILE *tty) {
 	while (1) {
 		int arrow_status_new = 0;
 
-		int key = getch();
+		int key = getch_safe();
 		if (key == 'q' || key == ERR) {
 			break;
 		} else if (key == 27) {
@@ -195,6 +198,7 @@ static void run_gui(FILE *tty) {
 	}
 
 	endwin();
+	delscreen(screen);
 }
 
 static int run_program(char **argv) {
@@ -305,7 +309,7 @@ static int run_program(char **argv) {
 	}
 
 	if (!ret) {
-		if (!isatty(fileno(stdout))) {
+		if (!isatty_safe(fileno_safe(stdout))) {
 			for (size_t i = 0; i < lines.size; i++) {
 				printf_safe("%s\n", lines.cptrdata[i]);
 			}
@@ -329,7 +333,7 @@ static int run_program(char **argv) {
 }
 
 int main(int argc, char **argv) {
-	setlocale(LC_ALL, "");
+	setlocale_safe(LC_ALL, "");
 
 	alist_init(&regexes, sizeof(regex_t));
 	alist_init_c(&regexes_type);
