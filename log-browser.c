@@ -24,10 +24,9 @@ size_t screen_pos;
 size_t cursor_pos;
 
 int rows;
-int cols;
 
 static void refresh_screen() {
-	getmaxyx(stdscr, rows, cols);
+	rows = getmaxy(stdscr);
 
 	int cursor_to = 0;
 	int pos = 0;
@@ -81,7 +80,7 @@ static void refresh_screen_pos() {
 	if (cursor_pos < screen_pos) {
 		screen_pos = cursor_pos;
 	} else if (cursor_pos > screen_pos) {
-		getmaxyx(stdscr, rows, cols);
+		rows = getmaxy(stdscr);
 
 		size_t cnt = 0;
 		size_t pos = cursor_pos;
@@ -152,28 +151,28 @@ static void run_gui(FILE *tty) {
 			refresh_screen_pos();
 			refresh_screen();
 		} else if (key == '5' && arrow_status == 2) {
-			getmaxyx(stdscr, rows, cols);
+			rows = getmaxy(stdscr);
 			for (int i = 0; i < rows; i++) {
 				cursor_up();
 			}
 			refresh_screen_pos();
 			refresh_screen();
 		} else if (key == '6' && arrow_status == 2) {
-			getmaxyx(stdscr, rows, cols);
+			rows = getmaxy(stdscr);
 			for (int i = 0; i < rows; i++) {
 				cursor_down();
 			}
 			refresh_screen_pos();
 			refresh_screen();
 		} else if (key == 21) {
-			getmaxyx(stdscr, rows, cols);
+			rows = getmaxy(stdscr);
 			for (int i = 0; i < rows; i += 2) {
 				cursor_up();
 			}
 			refresh_screen_pos();
 			refresh_screen();
 		} else if (key == 4) {
-			getmaxyx(stdscr, rows, cols);
+			rows = getmaxy(stdscr);
 			for (int i = 0; i < rows; i += 2) {
 				cursor_down();
 			}
