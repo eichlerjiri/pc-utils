@@ -22,4 +22,4 @@ dup-files: phony
 password-gen: phony
 	gcc $(CFLAGS) -o $@ $@.c
 log-browser: phony
-	gcc $(CFLAGS) -o $@ $@.c -lncursesw
+	gcc $(CFLAGS) -o $@ $@.c -l:libncursesw.a -l:libtinfo.a
