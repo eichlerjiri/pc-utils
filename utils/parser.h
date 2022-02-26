@@ -22,7 +22,7 @@ static int parse_long(char **str, long *res) {
 	errno = 0;
 
 	long ret = strtol(*str, &end, 10);
-	if (errno) {
+	if (errno || *str == end) {
 		return 1;
 	}
 
@@ -36,7 +36,7 @@ static int parse_unsigned_long_strict(char **str, unsigned long *res) {
 	errno = 0;
 
 	unsigned long ret = strtoul(*str, &end, 10);
-	if (errno) {
+	if (errno || *str == end) {
 		return 1;
 	}
 
@@ -57,7 +57,7 @@ static int parse_float(char **str, float *res) {
 	errno = 0;
 
 	float ret = strtof(*str, &end);
-	if (errno) {
+	if (errno || *str == end) {
 		return 1;
 	}
 
