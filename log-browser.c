@@ -281,6 +281,7 @@ static int run_program(char **argv) {
 				}
 				if (match) {
 					include = regexes_type.cdata[i];
+					break;
 				}
 			}
 
