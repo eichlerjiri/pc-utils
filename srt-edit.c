@@ -8,12 +8,12 @@
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
 #include "utils/string_utils.h"
-#include "utils/alist.h"
+#include "utils/strlist.h"
 #include "utils/parser.h"
 
 size_t insize;
 char *inbuf;
-struct alist outbuf;
+struct strlist outbuf;
 
 static int parse_srt_time(char **str, long *res, const char *filename, unsigned long linenum, const char *fixing) {
 	unsigned long hours, minutes, seconds, millis;
@@ -53,7 +53,7 @@ static void print_srt_time(char *buffer, long millis) {
 static int process_file(const char *filename, FILE *input, long from, long to, int rewrite, long diff, float diff_fps) {
 	const char *fixing;
 	if (rewrite) {
-		alist_resize_c(&outbuf, 0);
+		strlist_resize(&outbuf, 0);
 
 		fixing = "[FIXING] ";
 	} else {
@@ -99,7 +99,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 
 				if (rewrite) {
 					sprintf(buffer, "%li\r\n", ++subnum_write);
-					alist_add_s(&outbuf, buffer);
+					strlist_add_s(&outbuf, buffer);
 				}
 
 				state = 1;
@@ -135,7 +135,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 				print_srt_time(srtbuf1, millis1);
 				print_srt_time(srtbuf2, millis2);
 				sprintf(buffer, "%s --> %s\r\n", srtbuf1, srtbuf2);
-				alist_add_s(&outbuf, buffer);
+				strlist_add_s(&outbuf, buffer);
 			}
 
 			if (millis1 >= millis2) {
@@ -149,8 +149,8 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 			state = 2;
 		} else if (state == 2 || state == 3) {
 			if (rewrite) {
-				alist_add_s(&outbuf, s);
-				alist_add_s(&outbuf, "\r\n");
+				strlist_add_s(&outbuf, s);
+				strlist_add_s(&outbuf, "\r\n");
 			}
 
 			if (!*s) {
@@ -158,7 +158,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 					printf_safe("%s%s: line %lu: No text\n", fixing, filename, linenum);
 
 					if (rewrite) {
-						alist_resize_c(&outbuf, last_finished_pos);
+						strlist_resize(&outbuf, last_finished_pos);
 						subnum_write--;
 					}
 				}
@@ -180,9 +180,9 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 
 		if (rewrite) {
 			if (state == 3) {
-				alist_add_s(&outbuf, "\r\n");
+				strlist_add_s(&outbuf, "\r\n");
 			} else {
-				alist_resize_c(&outbuf, last_finished_pos);
+				strlist_resize(&outbuf, last_finished_pos);
 			}
 		}
 	}
@@ -304,7 +304,7 @@ static int run_program(char **argv) {
 	}
 
 	if (rewrite) {
-		alist_init_c(&outbuf);
+		strlist_init(&outbuf);
 	}
 
 	int ret = 0;
@@ -315,7 +315,7 @@ static int run_program(char **argv) {
 	}
 
 	if (rewrite) {
-		alist_destroy_c(&outbuf);
+		strlist_destroy(&outbuf);
 	}
 	free(inbuf);
 

@@ -10,17 +10,17 @@
 #include "utils/stdio_utils.h"
 #include "utils/stdlib_utils.h"
 #include "utils/string_utils.h"
-#include "utils/alist.h"
+#include "utils/strlist.h"
 #include "utils/hmap.h"
 #include "utils/crc64.h"
 
 unsigned long crc64_table[256];
 struct hmap map;
 
-static int process_file(struct alist *path) {
-	int input = open(path->cdata, O_RDONLY);
+static int process_file(struct strlist *path) {
+	int input = open(path->data, O_RDONLY);
 	if (input == -1) {
-		fprintf(stderr, "Error opening file %s: %s\n", path->cdata, strerror(errno));
+		fprintf(stderr, "Error opening file %s: %s\n", path->data, strerror(errno));
 		return 2;
 	}
 
@@ -35,31 +35,31 @@ static int process_file(struct alist *path) {
 		}
 	}
 	if (cnt == -1) {
-		fprintf(stderr, "Error reading file %s: %s\n", path->cdata, strerror(errno));
+		fprintf(stderr, "Error reading file %s: %s\n", path->data, strerror(errno));
 		ret = 2;
 	}
 	if (close(input) == -1) {
-		fprintf(stderr, "Error closing file %s: %s\n", path->cdata, strerror(errno));
+		fprintf(stderr, "Error closing file %s: %s\n", path->data, strerror(errno));
 		ret = 2;
 	}
 
 	if (!ret) {
 		char *path_dup = hmap_get(&map, (void*) crc);
 		if (path_dup) {
-			printf_safe("Duplicate file %s - the same as %s\n", path->cdata, path_dup);
+			printf_safe("Duplicate file %s - the same as %s\n", path->data, path_dup);
 		} else {
-			hmap_put(&map, (void*) crc, strdup_safe(path->cdata));
+			hmap_put(&map, (void*) crc, strdup_safe(path->data));
 		}
 	}
 
 	return ret;
 }
 
-static int process_item(struct alist *path, unsigned char type_hint) {
+static int process_item(struct strlist *path, unsigned char type_hint) {
 	if (type_hint == DT_UNKNOWN || type_hint == DT_LNK) {
 		struct stat statbuf;
-		if (stat(path->cdata, &statbuf)) {
-			fprintf(stderr, "Error retrieving entry %s: %s\n", path->cdata, strerror(errno));
+		if (stat(path->data, &statbuf)) {
+			fprintf(stderr, "Error retrieving entry %s: %s\n", path->data, strerror(errno));
 			return 2;
 		}
 		if (S_ISDIR(statbuf.st_mode)) {
@@ -73,9 +73,9 @@ static int process_item(struct alist *path, unsigned char type_hint) {
 		return 0;
 	}
 
-	DIR *d = opendir(path->cdata);
+	DIR *d = opendir(path->data);
 	if (!d) {
-		fprintf(stderr, "Error opening directory %s: %s\n", path->cdata, strerror(errno));
+		fprintf(stderr, "Error opening directory %s: %s\n", path->data, strerror(errno));
 		return 2;
 	}
 
@@ -86,24 +86,24 @@ static int process_item(struct alist *path, unsigned char type_hint) {
 		if (strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
 			size_t path_size = path->size;
 
-			if (path->cdata[path->size - 1] != '/') {
-				alist_add_c(path, '/');
+			if (path->data[path->size - 1] != '/') {
+				strlist_add(path, '/');
 			}
-			alist_add_s(path, de->d_name);
+			strlist_add_s(path, de->d_name);
 
 			if (process_item(path, de->d_type)) {
 				ret = 2;
 			}
 
-			alist_resize_c(path, path_size);
+			strlist_resize(path, path_size);
 		}
 	}
 	if (errno) {
-		fprintf(stderr, "Error reading directory %s: %s\n", path->cdata, strerror(errno));
+		fprintf(stderr, "Error reading directory %s: %s\n", path->data, strerror(errno));
 		ret = 2;
 	}
 	if (closedir(d)) {
-		fprintf(stderr, "Error closing directory %s: %s\n", path->cdata, strerror(errno));
+		fprintf(stderr, "Error closing directory %s: %s\n", path->data, strerror(errno));
 		ret = 2;
 	}
 
@@ -126,14 +126,14 @@ static int run_program(char **argv) {
 	generate_crc64_table(crc64_table);
 	hmap_init(&map, hash_ptr, equals_ptr, nofree, free);
 
-	struct alist path;
-	alist_init_c(&path);
+	struct strlist path;
+	strlist_init(&path);
 
-	alist_add_s(&path, dir);
+	strlist_add_s(&path, dir);
 
 	int ret = process_item(&path, DT_DIR);
 
-	alist_destroy_c(&path);
+	strlist_destroy(&path);
 
 	hmap_destroy(&map);
 

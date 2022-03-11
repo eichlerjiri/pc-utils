@@ -10,25 +10,25 @@
 #include <sys/stat.h>
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
-#include "utils/alist.h"
+#include "utils/strlist.h"
 #include "utils/exec.h"
 
-static int add_to_path(struct alist *path, const char *subpath, int do_mkdir) {
-	if (path->size && path->cdata[path->size - 1] == '/') {
-		alist_resize_c(path, path->size - 1);
+static int add_to_path(struct strlist *path, const char *subpath, int do_mkdir) {
+	if (path->size && path->data[path->size - 1] == '/') {
+		strlist_resize(path, path->size - 1);
 	}
 
 	char *next;
 	do {
 		next = strchrnul(subpath, '/');
 		if (next != subpath) {
-			alist_add_c(path, '/');
-			alist_add_sn(path, subpath, (size_t) (next - subpath));
+			strlist_add(path, '/');
+			strlist_add_sn(path, subpath, (size_t) (next - subpath));
 
 			if (do_mkdir) {
-				printf_safe("Creating directory: %s\n", path->cdata);
-				if (mkdir(path->cdata, 0755) && errno != EEXIST) {
-					fprintf(stderr, "Error creating directory %s: %s\n", path->cdata, strerror(errno));
+				printf_safe("Creating directory: %s\n", path->data);
+				if (mkdir(path->data, 0755) && errno != EEXIST) {
+					fprintf(stderr, "Error creating directory %s: %s\n", path->data, strerror(errno));
 					return 2;
 				}
 			}
@@ -38,28 +38,28 @@ static int add_to_path(struct alist *path, const char *subpath, int do_mkdir) {
 	return 0;
 }
 
-static int process_file(struct alist *in, struct alist *out) {
-	char *dot = strrchr(out->cdata, '.');
+static int process_file(struct strlist *in, struct strlist *out) {
+	char *dot = strrchr(out->data, '.');
 	if (dot) {
 		if (!strcasecmp(dot, ".mp3") || !strcasecmp(dot, ".m4a")) {
-			const char *params[] = {"ffmpeg", "-y", "-i", in->cdata, "-vn", "-codec:a", "copy", "-map_metadata", "-1", out->cdata, NULL};
+			const char *params[] = {"ffmpeg", "-y", "-i", in->data, "-vn", "-codec:a", "copy", "-map_metadata", "-1", out->data, NULL};
 			return exec_and_wait(params[0], params, NULL);
 		} else if (!strcasecmp(dot, ".flac") || !strcasecmp(dot, ".ape")) {
 			strcpy(dot, ".mp3");
-			const char *params[] = {"ffmpeg", "-y", "-i", in->cdata, "-vn", "-ab", "320k", "-map_metadata", "-1", out->cdata, NULL};
+			const char *params[] = {"ffmpeg", "-y", "-i", in->data, "-vn", "-ab", "320k", "-map_metadata", "-1", out->data, NULL};
 			return exec_and_wait(params[0], params, NULL);
 		}
 	}
 	return 0;
 }
 
-static int process_item(struct alist *in, struct alist *out, const char *subpath, unsigned char type_hint) {
+static int process_item(struct strlist *in, struct strlist *out, const char *subpath, unsigned char type_hint) {
 	add_to_path(in, subpath, 0);
 
 	if (type_hint == DT_UNKNOWN || type_hint == DT_LNK) {
 		struct stat statbuf;
-		if (stat(in->cdata, &statbuf)) {
-			fprintf(stderr, "Error retrieving entry %s: %s\n", in->cdata, strerror(errno));
+		if (stat(in->data, &statbuf)) {
+			fprintf(stderr, "Error retrieving entry %s: %s\n", in->data, strerror(errno));
 			return 2;
 		}
 		if (S_ISDIR(statbuf.st_mode)) {
@@ -78,9 +78,9 @@ static int process_item(struct alist *in, struct alist *out, const char *subpath
 		return 2;
 	}
 
-	DIR *d = opendir(in->cdata);
+	DIR *d = opendir(in->data);
 	if (!d) {
-		fprintf(stderr, "Error opening directory %s: %s\n", in->cdata, strerror(errno));
+		fprintf(stderr, "Error opening directory %s: %s\n", in->data, strerror(errno));
 		return 2;
 	}
 
@@ -96,16 +96,16 @@ static int process_item(struct alist *in, struct alist *out, const char *subpath
 				ret = 2;
 			}
 
-			alist_resize_c(in, in_size);
-			alist_resize_c(out, out_size);
+			strlist_resize(in, in_size);
+			strlist_resize(out, out_size);
 		}
 	}
 	if (errno) {
-		fprintf(stderr, "Error reading directory %s: %s\n", in->cdata, strerror(errno));
+		fprintf(stderr, "Error reading directory %s: %s\n", in->data, strerror(errno));
 		ret = 2;
 	}
 	if (closedir(d)) {
-		fprintf(stderr, "Error closing directory %s: %s\n", in->cdata, strerror(errno));
+		fprintf(stderr, "Error closing directory %s: %s\n", in->data, strerror(errno));
 		ret = 2;
 	}
 
@@ -141,12 +141,12 @@ static int run_program(char **argv) {
 		return 2;
 	}
 
-	struct alist in, out;
-	alist_init_c(&in);
-	alist_init_c(&out);
+	struct strlist in, out;
+	strlist_init(&in);
+	strlist_init(&out);
 
-	alist_add_s(&in, in_c);
-	alist_add_s(&out, out_c);
+	strlist_add_s(&in, in_c);
+	strlist_add_s(&out, out_c);
 
 	int ret = 0;
 
@@ -159,12 +159,12 @@ static int run_program(char **argv) {
 			ret = 2;
 		}
 
-		alist_resize_c(&in, in_size);
-		alist_resize_c(&out, out_size);
+		strlist_resize(&in, in_size);
+		strlist_resize(&out, out_size);
 	}
 
-	alist_destroy_c(&in);
-	alist_destroy_c(&out);
+	strlist_destroy(&in);
+	strlist_destroy(&out);
 
 	return ret;
 }

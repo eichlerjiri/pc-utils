@@ -7,34 +7,34 @@
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
 #include "utils/string_utils.h"
-#include "utils/alist.h"
+#include "utils/strlist.h"
 #include "utils/hmap.h"
 #include "utils/parser.h"
 
 size_t insize;
 char *inbuf;
 struct hmap map;
-struct alist sb;
+struct strlist sb;
 
 static int parse_line(char *in, char **flag, char **type, char **function) {
-	alist_resize_c(&sb, 0);
+	strlist_resize(&sb, 0);
 
 	size_t flag_pos = sb.size;
 	int err = parse_word(&in, &sb);
-	alist_add_c(&sb, '\0');
+	strlist_add(&sb, '\0');
 
 	size_t type_pos = sb.size;
 	err += parse_word(&in, &sb);
-	alist_add_c(&sb, ' ');
+	strlist_add(&sb, ' ');
 	err += parse_word(&in, &sb);
-	alist_add_c(&sb, '\0');
+	strlist_add(&sb, '\0');
 
 	size_t function_pos = sb.size;
 	err += parse_word(&in, &sb);
 
-	*flag = sb.cdata + flag_pos;
-	*type = sb.cdata + type_pos;
-	*function  = sb.cdata + function_pos;
+	*flag = sb.data + flag_pos;
+	*type = sb.data + type_pos;
+	*function  = sb.data + function_pos;
 	return err;
 }
 
@@ -102,13 +102,13 @@ static int run_program(char **argv) {
 	}
 
 	hmap_init(&map, hash_str, equals_str, free, free);
-	alist_init_c(&sb);
+	strlist_init(&sb);
 
 	int ret = process_file(input, filename);
 
 	free(inbuf);
 	hmap_destroy(&map);
-	alist_destroy_c(&sb);
+	strlist_destroy(&sb);
 
 	if (fclose(input)) {
 		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));

@@ -1,4 +1,4 @@
-static int parse_word(char **str, struct alist *res) {
+static int parse_word(char **str, struct strlist *res) {
 	char *s = *str;
 	while (*s && isspace(*s)) {
 		s++;
@@ -6,7 +6,7 @@ static int parse_word(char **str, struct alist *res) {
 
 	int err = 1;
 	while (*s && !isspace(*s)) {
-		alist_add_c(res, *s++);
+		strlist_add(res, *s++);
 		err = 0;
 	}
 	if (err) {

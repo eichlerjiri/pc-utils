@@ -13,15 +13,17 @@
 #include "utils/locale_utils.h"
 #include "utils/regex_utils.h"
 #include "utils/ncurses_utils.h"
-#include "utils/alist.h"
+#include "utils/ptrlist.h"
+#include "utils/strlist.h"
+#include "utils/unilist.h"
 
 size_t insize;
 char *inbuf;
 
-struct alist regexes;
-struct alist regexes_type;
-struct alist lines;
-struct alist collapsed;
+struct unilist regexes;
+struct strlist regexes_type;
+struct ptrlist lines;
+struct strlist collapsed;
 
 size_t screen_pos;
 size_t cursor_pos;
@@ -34,10 +36,10 @@ static void refresh_screen() {
 	int cursor_to = 0;
 	int pos = 0;
 	for (size_t i = screen_pos; i < lines.size; i++) {
-		if (!collapsed.cdata[i]) {
+		if (!collapsed.data[i]) {
 			move(pos, 0);
 			clrtoeol();
-			addstr(lines.cptrdata[i]);
+			addstr(lines.data[i]);
 
 			if (i == cursor_pos) {
 				cursor_to = pos;
@@ -61,7 +63,7 @@ static void cursor_up() {
 	size_t pos = cursor_pos;
 	while (pos > 0) {
 		pos--;
-		if (!collapsed.cdata[pos]) {
+		if (!collapsed.data[pos]) {
 			break;
 		}
 	}
@@ -72,7 +74,7 @@ static void cursor_down() {
 	size_t pos = cursor_pos;
 	while (pos < lines.size - 1) {
 		pos++;
-		if (!collapsed.cdata[pos]) {
+		if (!collapsed.data[pos]) {
 			cursor_pos = pos;
 			break;
 		}
@@ -89,7 +91,7 @@ static void refresh_screen_pos() {
 		size_t pos = cursor_pos;
 		while (pos > screen_pos && cnt < rows - 1) {
 			pos--;
-			if (!collapsed.cdata[pos]) {
+			if (!collapsed.data[pos]) {
 				cnt++;
 			}
 		}
@@ -101,7 +103,7 @@ static void refresh_screen_pos() {
 
 static void set_collapsed(char collapse) {
 	size_t pos = cursor_pos;
-	while (pos > 0 && lines.cptrdata[pos][0] == '\t') {
+	while (pos > 0 && ((char*) lines.data[pos])[0] == '\t') {
 		pos--;
 	}
 
@@ -111,8 +113,8 @@ static void set_collapsed(char collapse) {
 
 	pos++;
 
-	while (pos < lines.size && lines.cptrdata[pos][0] == '\t') {
-		collapsed.cdata[pos++] = collapse;
+	while (pos < lines.size && ((char*) lines.data[pos])[0] == '\t') {
+		collapsed.data[pos++] = collapse;
 	}
 
 	if (!collapse) {
@@ -226,8 +228,8 @@ static int run_program(char **argv) {
 				fprintf(stderr, "Invalid regular expression: %s\n", buffer);
 				return 2;
 			}
-			alist_add(&regexes, &regex);
-			alist_add_c(&regexes_type, !strcmp(arg, "-in"));
+			unilist_add(&regexes, &regex);
+			strlist_add(&regexes_type, !strcmp(arg, "-in"));
 		} else {
 			fprintf(stderr, "Invalid argument: %s\n", arg);
 			return 2;
@@ -266,7 +268,7 @@ static int run_program(char **argv) {
 
 		if (!additional && lines.size) {
 			int include = 1;
-			if (regexes_type.size && regexes_type.cdata[regexes_type.size - 1]) {
+			if (regexes_type.size && regexes_type.data[regexes_type.size - 1]) {
 				include = 0;
 			}
 
@@ -274,20 +276,20 @@ static int run_program(char **argv) {
 			for (size_t i = 0; i < regexes.size; i++) {
 				int match = 0;
 				for (size_t j = last_mark; j < lines.size; j++) {
-					if (!regexec_safe(regexes_data + i, lines.cptrdata[j], 0, NULL, 0)) {
+					if (!regexec_safe(regexes_data + i, lines.data[j], 0, NULL, 0)) {
 						match = 1;
 						break;
 					}
 				}
 				if (match) {
-					include = regexes_type.cdata[i];
+					include = regexes_type.data[i];
 					break;
 				}
 			}
 
 			if (!include) {
-				alist_resize_ptr(&lines, last_mark);
-				alist_resize_c(&collapsed, last_mark);
+				ptrlist_resize(&lines, last_mark);
+				strlist_resize(&collapsed, last_mark);
 			}
 
 			last_mark = lines.size;
@@ -297,8 +299,8 @@ static int run_program(char **argv) {
 			break;
 		}
 
-		alist_add_ptr(&lines, strdup_safe(inbuf));
-		alist_add_c(&collapsed, additional);
+		ptrlist_add(&lines, strdup_safe(inbuf));
+		strlist_add(&collapsed, additional);
 	}
 	if (!feof(input)) {
 		fprintf(stderr, "Error reading file %s: %s\n", filename, strerror(errno));
@@ -312,7 +314,7 @@ static int run_program(char **argv) {
 	if (!ret) {
 		if (!isatty_safe(fileno_safe(stdout))) {
 			for (size_t i = 0; i < lines.size; i++) {
-				printf_safe("%s\n", lines.cptrdata[i]);
+				printf_safe("%s\n", (char*) lines.data[i]);
 			}
 		} else {
 			FILE *tty = fopen("/dev/tty", "r+");
@@ -336,10 +338,10 @@ static int run_program(char **argv) {
 int main(int argc, char **argv) {
 	setlocale_safe(LC_ALL, "");
 
-	alist_init(&regexes, sizeof(regex_t));
-	alist_init_c(&regexes_type);
-	alist_init_ptr(&lines);
-	alist_init_c(&collapsed);
+	unilist_init(&regexes, sizeof(regex_t));
+	strlist_init(&regexes_type);
+	ptrlist_init(&lines);
+	strlist_init(&collapsed);
 
 	int ret = run_program(argv);
 
@@ -348,10 +350,10 @@ int main(int argc, char **argv) {
 		regfree(regexes_data + i);
 	}
 
-	alist_destroy(&regexes);
-	alist_destroy_c(&regexes_type);
-	alist_destroy_ptr(&lines);
-	alist_destroy_c(&collapsed);
+	unilist_destroy(&regexes);
+	strlist_destroy(&regexes_type);
+	ptrlist_destroy(&lines);
+	strlist_destroy(&collapsed);
 
 	return ret;
 }

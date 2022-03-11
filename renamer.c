@@ -8,7 +8,8 @@
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
 #include "utils/string_utils.h"
-#include "utils/alist.h"
+#include "utils/ptrlist.h"
+#include "utils/strlist.h"
 #include "utils/exec.h"
 
 char *inbuf;
@@ -32,7 +33,7 @@ static int rename_file(char *old, char *new) {
 	return 0;
 }
 
-static int process_rename_list(char **argv, size_t cnt, struct alist *list) {
+static int process_rename_list(char **argv, size_t cnt, struct ptrlist *list) {
 	if (cnt != list->size) {
 		fprintf(stderr, "Different number of lines: original %li, new %li\n", cnt, list->size);
 		return 2;
@@ -40,7 +41,7 @@ static int process_rename_list(char **argv, size_t cnt, struct alist *list) {
 
 	int ret = 0;
 	for (size_t i = 0; i < cnt; i++) {
-		if (rename_file(argv[i], list->ptrdata[i])) {
+		if (rename_file(argv[i], list->data[i])) {
 			ret = 2;
 		}
 	}
@@ -61,11 +62,11 @@ static int edit_and_rename(char **argv, size_t cnt, char *tmpfilename) {
 
 	int ret = 0;
 
-	struct alist list;
-	alist_init_ptr(&list);
+	struct ptrlist list;
+	ptrlist_init(&list);
 
 	while (getline_no_eol(&inbuf, &insize, tmp) != -1) {
-		alist_add_ptr(&list, strdup_safe(inbuf));
+		ptrlist_add(&list, strdup_safe(inbuf));
 	}
 	if (!feof(tmp)) {
 		fprintf(stderr, "Error reading file %s: %s\n", tmpfilename, strerror(errno));
@@ -80,7 +81,7 @@ static int edit_and_rename(char **argv, size_t cnt, char *tmpfilename) {
 		ret = process_rename_list(argv, cnt, &list);
 	}
 
-	alist_destroy_ptr(&list);
+	ptrlist_destroy(&list);
 
 	return ret;
 }

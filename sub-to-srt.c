@@ -9,33 +9,33 @@
 #include "utils/stdlib_utils.h"
 #include "utils/stdio_utils.h"
 #include "utils/string_utils.h"
-#include "utils/alist.h"
+#include "utils/strlist.h"
 #include "utils/parser.h"
 #include "utils/exec.h"
 
 size_t insize;
 char *inbuf;
-struct alist outbuf, namebuf;
+struct strlist outbuf, namebuf;
 
 static int find_video_file(const char *filename) {
 	const char *ext[] = {".avi", ".mkv", ".mp4", NULL};
 
-	alist_resize_c(&namebuf, 0);
-	alist_add_s(&namebuf, filename);
+	strlist_resize(&namebuf, 0);
+	strlist_add_s(&namebuf, filename);
 
 	char *dot;
-	while ((dot = strrchr(namebuf.cdata, '.'))) {
-		alist_resize_c(&namebuf, (size_t) (dot - namebuf.cdata));
+	while ((dot = strrchr(namebuf.data, '.'))) {
+		strlist_resize(&namebuf, (size_t) (dot - namebuf.data));
 
 		for (int i = 0; ext[i]; i++) {
 			size_t orig_len = namebuf.size;
-			alist_add_s(&namebuf, ext[i]);
+			strlist_add_s(&namebuf, ext[i]);
 
-			if (!access(namebuf.cdata, F_OK)) {
+			if (!access(namebuf.data, F_OK)) {
 				return 0;
 			}
 
-			alist_resize_c(&namebuf, orig_len);
+			strlist_resize(&namebuf, orig_len);
 		}
 	}
 
@@ -48,14 +48,14 @@ static int determine_fps(const char *filename, float *res) {
 		return 2;
 	}
 
-	alist_resize_c(&outbuf, 0);
+	strlist_resize(&outbuf, 0);
 
-	const char *params[] = {"ffprobe", "-select_streams", "v", "-of", "default=noprint_wrappers=1:nokey=1", "-show_entries", "stream=r_frame_rate", namebuf.cdata, NULL};
+	const char *params[] = {"ffprobe", "-select_streams", "v", "-of", "default=noprint_wrappers=1:nokey=1", "-show_entries", "stream=r_frame_rate", namebuf.data, NULL};
 	if (exec_and_wait(params[0], params, &outbuf)) {
 		return 2;
 	}
 
-	char *s = outbuf.cdata;
+	char *s = outbuf.data;
 	unsigned long nomin, denom;
 
 	int err = parse_unsigned_long_strict(&s, &nomin);
@@ -63,7 +63,7 @@ static int determine_fps(const char *filename, float *res) {
 	err += parse_unsigned_long_strict(&s, &denom);
 
 	if (err || nomin <= 0 || denom <= 0) {
-		fprintf(stderr, "Invalid ffprobe response for file: %s\n", namebuf.cdata);
+		fprintf(stderr, "Invalid ffprobe response for file: %s\n", namebuf.data);
 		return 2;
 	}
 
@@ -93,7 +93,7 @@ static int process_file(const char *filename, FILE *input) {
 		return 2;
 	}
 
-	alist_resize_c(&outbuf, 0);
+	strlist_resize(&outbuf, 0);
 
 	unsigned long linenum = 0;
 	size_t linelen;
@@ -118,26 +118,26 @@ static int process_file(const char *filename, FILE *input) {
 
 		char buffer[256];
 		sprintf(buffer, "%lu\r\n", linenum);
-		alist_add_s(&outbuf, buffer);
+		strlist_add_s(&outbuf, buffer);
 
 		char srtbuf1[64], srtbuf2[64];
 		print_srt_time(srtbuf1, (unsigned long) ((float) from / fps * 1000));
 		print_srt_time(srtbuf2, (unsigned long) ((float) to / fps * 1000));
 		sprintf(buffer, "%s --> %s\r\n", srtbuf1, srtbuf2);
-		alist_add_s(&outbuf, buffer);
+		strlist_add_s(&outbuf, buffer);
 
 		int italic = 0;
 		while (*s) {
 			char c = *s++;
 			if (c == '|') {
 				if (italic) {
-					alist_add_s(&outbuf, "</i>");
+					strlist_add_s(&outbuf, "</i>");
 					italic = 0;
 				}
-				alist_add_s(&outbuf, "\r\n");
+				strlist_add_s(&outbuf, "\r\n");
 			} else if (c == '{') {
 				if (!strncmp(s, "y:i}", 4)) {
-					alist_add_s(&outbuf, "<i>");
+					strlist_add_s(&outbuf, "<i>");
 					italic = 1;
 					s += 4;
 				} else {
@@ -145,39 +145,39 @@ static int process_file(const char *filename, FILE *input) {
 					return 2;
 				}
 			} else {
-				alist_add_c(&outbuf, c);
+				strlist_add(&outbuf, c);
 			}
 		}
 		if (italic) {
-			alist_add_s(&outbuf, "</i>");
+			strlist_add_s(&outbuf, "</i>");
 		}
 
-		alist_add_s(&outbuf, "\r\n\r\n");
+		strlist_add_s(&outbuf, "\r\n\r\n");
 	}
 	if (!feof(input)) {
 		fprintf(stderr, "Error reading file %s: %s\n", filename, strerror(errno));
 		return 2;
 	}
 
-	alist_resize_c(&namebuf, 0);
-	alist_add_sn(&namebuf, filename, (size_t) (dot - filename));
-	alist_add_s(&namebuf, ".srt");
+	strlist_resize(&namebuf, 0);
+	strlist_add_sn(&namebuf, filename, (size_t) (dot - filename));
+	strlist_add_s(&namebuf, ".srt");
 
-	FILE *output = fopen(namebuf.cdata, "w");
+	FILE *output = fopen(namebuf.data, "w");
 	if (!output) {
-		fprintf(stderr, "Error opening file %s for writing: %s\n", namebuf.cdata, strerror(errno));
+		fprintf(stderr, "Error opening file %s for writing: %s\n", namebuf.data, strerror(errno));
 		return 2;
 	}
 
 	int ret = 0;
 
 	if (fwrite(outbuf.data, outbuf.size, 1, output) != 1) {
-		fprintf(stderr, "Error writing file %s\n", namebuf.cdata);
+		fprintf(stderr, "Error writing file %s\n", namebuf.data);
 		ret = 2;
 	}
 
 	if (fclose(output)) {
-		fprintf(stderr, "Error closing file %s for writing: %s\n", namebuf.cdata, strerror(errno));
+		fprintf(stderr, "Error closing file %s for writing: %s\n", namebuf.data, strerror(errno));
 		ret = 2;
 	}
 
@@ -208,8 +208,8 @@ static int run_program(char **argv) {
 		return 1;
 	}
 
-	alist_init_c(&outbuf);
-	alist_init_c(&namebuf);
+	strlist_init(&outbuf);
+	strlist_init(&namebuf);
 
 	int ret = 0;
 	while (*argv) {
@@ -218,8 +218,8 @@ static int run_program(char **argv) {
 		}
 	}
 
-	alist_destroy_c(&outbuf);
-	alist_destroy_c(&namebuf);
+	strlist_destroy(&outbuf);
+	strlist_destroy(&namebuf);
 	free(inbuf);
 
 	return ret;

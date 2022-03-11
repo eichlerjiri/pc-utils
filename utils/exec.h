@@ -1,4 +1,4 @@
-static int exec_and_wait(const char *file, const char **argv, struct alist *output) {
+static int exec_and_wait(const char *file, const char **argv, struct strlist *output) {
 	int fildes[2];
 	if (output) {
 		if (pipe(fildes)) {
@@ -20,7 +20,7 @@ static int exec_and_wait(const char *file, const char **argv, struct alist *outp
 			ssize_t n;
 			char buffer[4096];
 			while ((n = read(fildes[0], buffer, sizeof(buffer))) > 0) {
-				alist_add_sn(output, buffer, (size_t) n);
+				strlist_add_sn(output, buffer, (size_t) n);
 			}
 			if (n == -1) {
 				fprintf(stderr, "Error read: %s\n", strerror(errno));

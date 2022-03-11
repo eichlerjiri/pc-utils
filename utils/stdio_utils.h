@@ -1,3 +1,4 @@
+__attribute__((format(printf, 1, 2)))
 static int printf_safe(const char *format, ...) {
 	va_list valist;
 	va_start(valist, format);
