@@ -39,23 +39,42 @@ static void nofree(void *ptr) {
 }
 
 static void hmap_init(struct hmap *m, size_t (*hash)(const void*), int (*equals)(const void*, const void*), void (*free_key)(void*), void (*free_value)(void*)) {
-	m->capacity = 8;
+	m->capacity = 0;
 	m->size = 0;
-	m->fill_limit = 6;
+	m->fill_limit = 0;
 	m->hash = hash;
 	m->equals = equals;
+	m->data = NULL;
 	m->free_key = free_key;
 	m->free_value = free_value;
+}
 
-	m->data = calloc_safe(m->capacity, sizeof(struct hmap_item*));
+static void hmap_destroy(struct hmap *m) {
+	for (size_t i = 0; i < m->capacity; i++) {
+		struct hmap_item *item = m->data[i];
+		while (item) {
+			struct hmap_item *next = item->next;
+			m->free_key(item->key);
+			m->free_value(item->value);
+			free_safe(item);
+			item = next;
+		}
+	}
+
+	free_safe(m->data);
 }
 
 static void hmap_resize(struct hmap *m) {
 	size_t orig_capacity = m->capacity;
 	struct hmap_item **orig_data = m->data;
 
-	m->capacity *= 2;
-	m->fill_limit *= 2;
+	if (!m->capacity) {
+		m->capacity = 8;
+		m->fill_limit = 6;
+	} else {
+		m->capacity *= 2;
+		m->fill_limit *= 2;
+	}
 
 	m->data = calloc_safe(m->capacity, sizeof(struct hmap_item*));
 
@@ -72,24 +91,14 @@ static void hmap_resize(struct hmap *m) {
 		}
 	}
 
-	free(orig_data);
-}
-
-static void hmap_destroy(struct hmap *m) {
-	for (size_t i = 0; i < m->capacity; i++) {
-		struct hmap_item *item = m->data[i];
-		while (item) {
-			struct hmap_item *next = item->next;
-			m->free_key(item->key);
-			m->free_value(item->value);
-			free(item);
-			item = next;
-		}
-	}
-	free(m->data);
+	free_safe(orig_data);
 }
 
 static void *hmap_get(struct hmap *m, const void *key) {
+	if (!m->capacity) {
+		return NULL;
+	}
+
 	struct hmap_item *item = m->data[m->hash(key) & (m->capacity - 1)];
 	while (item) {
 		if (m->equals(key, item->key)) {
@@ -101,6 +110,10 @@ static void *hmap_get(struct hmap *m, const void *key) {
 }
 
 static void hmap_put(struct hmap *m, void *key, void *value) {
+	if (m->size >= m->fill_limit) {
+		hmap_resize(m);
+	}
+
 	struct hmap_item **link = m->data + (m->hash(key) & (m->capacity - 1));
 	struct hmap_item *item;
 	while ((item = *link)) {
@@ -121,13 +134,13 @@ static void hmap_put(struct hmap *m, void *key, void *value) {
 	item->key = key;
 	item->value = value;
 	m->size++;
-
-	if (m->size > m->fill_limit) {
-		hmap_resize(m);
-	}
 }
 
 static void hmap_remove(struct hmap *m, const void *key) {
+	if (!m->capacity) {
+		return;
+	}
+
 	struct hmap_item **link = m->data + (m->hash(key) & (m->capacity - 1));
 	struct hmap_item *item;
 	while ((item = *link)) {
@@ -135,7 +148,7 @@ static void hmap_remove(struct hmap *m, const void *key) {
 			m->free_key(item->key);
 			m->free_value(item->value);
 			*link = item->next;
-			free(item);
+			free_safe(item);
 			m->size--;
 			return;
 		}

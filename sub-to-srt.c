@@ -6,22 +6,21 @@
 #include <ctype.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include "utils/stdlib_utils.h"
+
 #include "utils/stdio_utils.h"
+#include "utils/stdlib_utils.h"
 #include "utils/string_utils.h"
 #include "utils/strlist.h"
 #include "utils/parser.h"
 #include "utils/exec.h"
 
-size_t insize;
-char *inbuf;
-struct strlist outbuf, namebuf;
+struct strlist inbuf, outbuf, namebuf;
 
 static int find_video_file(const char *filename) {
 	const char *ext[] = {".avi", ".mkv", ".mp4", NULL};
 
 	strlist_resize(&namebuf, 0);
-	strlist_add_s(&namebuf, filename);
+	strlist_add_sn(&namebuf, filename, strlen(filename));
 
 	char *dot;
 	while ((dot = strrchr(namebuf.data, '.'))) {
@@ -29,7 +28,7 @@ static int find_video_file(const char *filename) {
 
 		for (int i = 0; ext[i]; i++) {
 			size_t orig_len = namebuf.size;
-			strlist_add_s(&namebuf, ext[i]);
+			strlist_add_sn(&namebuf, ext[i], strlen(ext[i]));
 
 			if (!access(namebuf.data, F_OK)) {
 				return 0;
@@ -96,14 +95,16 @@ static int process_file(const char *filename, FILE *input) {
 	strlist_resize(&outbuf, 0);
 
 	unsigned long linenum = 0;
-	size_t linelen;
-	while ((linelen = (size_t) getline(&inbuf, &insize, input)) != (size_t) -1) {
+	while (1) {
+		strlist_resize(&inbuf, 0);
+		if (strlist_readline(&inbuf, input) == -1) {
+			break;
+		}
 		linenum++;
 
-		char *s = inbuf;
+		int err = parse_line_end(inbuf.data, &inbuf.size, NULL);
+		char *s = inbuf.data;
 		unsigned long from, to;
-
-		int err = parse_line_end(s, linelen, NULL);
 		err += parse_char_match(&s, '{');
 		err += parse_unsigned_long_strict(&s, &from);
 		err += parse_char_match(&s, '}');
@@ -117,27 +118,27 @@ static int process_file(const char *filename, FILE *input) {
 		}
 
 		char buffer[256];
-		sprintf(buffer, "%lu\r\n", linenum);
-		strlist_add_s(&outbuf, buffer);
+		size_t written = (size_t) sprintf(buffer, "%lu\r\n", linenum);
+		strlist_add_sn(&outbuf, buffer, written);
 
 		char srtbuf1[64], srtbuf2[64];
 		print_srt_time(srtbuf1, (unsigned long) ((float) from / fps * 1000));
 		print_srt_time(srtbuf2, (unsigned long) ((float) to / fps * 1000));
-		sprintf(buffer, "%s --> %s\r\n", srtbuf1, srtbuf2);
-		strlist_add_s(&outbuf, buffer);
+		written = (size_t) sprintf(buffer, "%s --> %s\r\n", srtbuf1, srtbuf2);
+		strlist_add_sn(&outbuf, buffer, written);
 
 		int italic = 0;
 		while (*s) {
 			char c = *s++;
 			if (c == '|') {
 				if (italic) {
-					strlist_add_s(&outbuf, "</i>");
+					strlist_add_sn(&outbuf, "</i>", strlen("</i>"));
 					italic = 0;
 				}
-				strlist_add_s(&outbuf, "\r\n");
+				strlist_add_sn(&outbuf, "\r\n", strlen("\r\n"));
 			} else if (c == '{') {
 				if (!strncmp(s, "y:i}", 4)) {
-					strlist_add_s(&outbuf, "<i>");
+					strlist_add_sn(&outbuf, "<i>", strlen("<i>"));
 					italic = 1;
 					s += 4;
 				} else {
@@ -149,10 +150,10 @@ static int process_file(const char *filename, FILE *input) {
 			}
 		}
 		if (italic) {
-			strlist_add_s(&outbuf, "</i>");
+			strlist_add_sn(&outbuf, "</i>", strlen("</i>"));
 		}
 
-		strlist_add_s(&outbuf, "\r\n\r\n");
+		strlist_add_sn(&outbuf, "\r\n\r\n", strlen("\r\n\r\n"));
 	}
 	if (!feof(input)) {
 		fprintf(stderr, "Error reading file %s: %s\n", filename, strerror(errno));
@@ -161,7 +162,7 @@ static int process_file(const char *filename, FILE *input) {
 
 	strlist_resize(&namebuf, 0);
 	strlist_add_sn(&namebuf, filename, (size_t) (dot - filename));
-	strlist_add_s(&namebuf, ".srt");
+	strlist_add_sn(&namebuf, ".srt", strlen(".srt"));
 
 	FILE *output = fopen(namebuf.data, "w");
 	if (!output) {
@@ -208,19 +209,21 @@ static int run_program(char **argv) {
 		return 1;
 	}
 
+	strlist_init(&inbuf);
 	strlist_init(&outbuf);
 	strlist_init(&namebuf);
 
 	int ret = 0;
+
 	while (*argv) {
 		if (process_filename(*argv++)) {
 			ret = 2;
 		}
 	}
 
+	strlist_destroy(&inbuf);
 	strlist_destroy(&outbuf);
 	strlist_destroy(&namebuf);
-	free(inbuf);
 
 	return ret;
 }

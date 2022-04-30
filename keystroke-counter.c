@@ -4,6 +4,7 @@
 #include <errno.h>
 #include <string.h>
 #include <linux/input.h>
+
 #include "utils/stdio_utils.h"
 
 static int run_program(char **argv) {

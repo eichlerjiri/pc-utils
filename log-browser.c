@@ -6,8 +6,9 @@
 #include <locale.h>
 #include <regex.h>
 #include <ncurses.h>
-#include "utils/stdlib_utils.h"
+
 #include "utils/stdio_utils.h"
+#include "utils/stdlib_utils.h"
 #include "utils/string_utils.h"
 #include "utils/unistd_utils.h"
 #include "utils/locale_utils.h"
@@ -16,9 +17,6 @@
 #include "utils/ptrlist.h"
 #include "utils/strlist.h"
 #include "utils/unilist.h"
-
-size_t insize;
-char *inbuf;
 
 struct unilist regexes;
 struct strlist regexes_type;
@@ -205,7 +203,7 @@ static void run_gui(FILE *tty) {
 
 static int run_program(char **argv) {
 	char *pname = *argv++;
-	if (!*argv && isatty(fileno(stdin))) {
+	if (!*argv && isatty_safe(fileno_safe(stdin))) {
 		printf_safe("Usage: %s [arguments] <log file>\n"
 			"\n"
 			"arguments:\n"
@@ -220,15 +218,17 @@ static int run_program(char **argv) {
 		if (!strcmp(arg, "--")) {
 			break;
 		} else if ((!strcmp(arg, "-in") || !strcmp(arg, "-ex")) && *argv) {
-			regex_t regex;
-			int res = regcomp(&regex, *argv++, REG_EXTENDED | REG_NOSUB);
-			if (res) {
-				char buffer[4096];
-				regerror(res, &regex, buffer, sizeof(buffer));
-				fprintf(stderr, "Invalid regular expression: %s\n", buffer);
+			regex_t compiled;
+			int ret = regcomp(&compiled, *argv++, REG_EXTENDED | REG_NOSUB);
+			if (ret) {
+				size_t bufsize = regerror(ret, &compiled, NULL, 0);
+				char *buf = malloc_safe(bufsize);
+				regerror(ret, &compiled, buf, bufsize);
+				fprintf(stderr, "Invalid regular expression: %s\n", buf);
+				free_safe(buf);
 				return 2;
 			}
-			unilist_add(&regexes, &regex);
+			unilist_add(&regexes, &compiled);
 			strlist_add(&regexes_type, !strcmp(arg, "-in"));
 		} else {
 			fprintf(stderr, "Invalid argument: %s\n", arg);
@@ -260,11 +260,15 @@ static int run_program(char **argv) {
 
 	int ret = 0;
 
+	struct strlist inbuf;
+	strlist_init(&inbuf);
+
 	size_t last_mark = 0;
 	while (1) {
-		ssize_t res = getline_no_eol(&inbuf, &insize, input);
+		strlist_resize(&inbuf, 0);
+		int res = strlist_readline(&inbuf, input);
 
-		char additional = res != -1 && inbuf[0] == '\t' && lines.size;
+		char additional = res != -1 && inbuf.data[0] == '\t' && lines.size;
 
 		if (!additional && lines.size) {
 			int include = 1;
@@ -299,7 +303,16 @@ static int run_program(char **argv) {
 			break;
 		}
 
-		ptrlist_add(&lines, strdup_safe(inbuf));
+		size_t newsize = 0;
+		for (size_t i = 0; i < inbuf.size; i++) {
+			char c = inbuf.data[i];
+			if (c && c != '\n') {
+				inbuf.data[newsize++] = c;
+			}
+		}
+		strlist_resize(&inbuf, newsize);
+
+		ptrlist_add(&lines, memdup_safe(inbuf.data, inbuf.size + 1));
 		strlist_add(&collapsed, additional);
 	}
 	if (!feof(input)) {
@@ -311,12 +324,10 @@ static int run_program(char **argv) {
 		ret = 2;
 	}
 
+	strlist_destroy(&inbuf);
+
 	if (!ret) {
-		if (!isatty_safe(fileno_safe(stdout))) {
-			for (size_t i = 0; i < lines.size; i++) {
-				printf_safe("%s\n", (char*) lines.data[i]);
-			}
-		} else {
+		if (isatty_safe(fileno_safe(stdout))) {
 			FILE *tty = fopen("/dev/tty", "r+");
 			if (!tty) {
 				fprintf(stderr, "Error opening TTY: %s\n", strerror(errno));
@@ -328,6 +339,10 @@ static int run_program(char **argv) {
 			if (fclose(tty)) {
 				fprintf(stderr, "Error closing TTY: %s\n", strerror(errno));
 				return 2;
+			}
+		} else {
+			for (size_t i = 0; i < lines.size; i++) {
+				printf_safe("%s\n", (char*) lines.data[i]);
 			}
 		}
 	}

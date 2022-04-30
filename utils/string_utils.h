@@ -1,8 +1,5 @@
-static char *strdup_safe(const char *s) {
-	char *ret = strdup(s);
-	if (!ret) {
-		fprintf(stderr, "Error allocating memory: %s\n", strerror(errno));
-		exit(3);
-	}
+static char *memdup_safe(void *ptr, size_t cnt) {
+	void *ret = malloc_safe(cnt);
+	memcpy(ret, ptr, cnt);
 	return ret;
 }

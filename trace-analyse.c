@@ -4,62 +4,58 @@
 #include <errno.h>
 #include <string.h>
 #include <ctype.h>
-#include "utils/stdlib_utils.h"
+
 #include "utils/stdio_utils.h"
+#include "utils/stdlib_utils.h"
 #include "utils/string_utils.h"
 #include "utils/strlist.h"
 #include "utils/hmap.h"
 #include "utils/parser.h"
 
-size_t insize;
-char *inbuf;
+struct strlist inbuf;
 struct hmap map;
 struct strlist sb;
 
-static int parse_line(char *in, char **flag, char **type, char **function) {
-	strlist_resize(&sb, 0);
-
-	size_t flag_pos = sb.size;
-	int err = parse_word(&in, &sb);
-	strlist_add(&sb, '\0');
-
-	size_t type_pos = sb.size;
-	err += parse_word(&in, &sb);
-	strlist_add(&sb, ' ');
-	err += parse_word(&in, &sb);
-	strlist_add(&sb, '\0');
-
-	size_t function_pos = sb.size;
-	err += parse_word(&in, &sb);
-
-	*flag = sb.data + flag_pos;
-	*type = sb.data + type_pos;
-	*function  = sb.data + function_pos;
-	return err;
-}
-
 static int process_file(FILE *input, char *filename) {
 	unsigned long linenum = 0;
-	while (getline_no_eol(&inbuf, &insize, input) != -1) {
+	while (1) {
+		strlist_resize(&inbuf, 0);
+		if (strlist_readline(&inbuf, input) == -1) {
+			break;
+		}
 		linenum++;
 
-		char *flag, *type, *function;
-		if (parse_line(inbuf, &flag, &type, &function) || (strcmp(flag, "A") && strcmp(flag, "F"))) {
+		char *flag, *type, *ptr, *function;
+		size_t flag_len, type_len, ptr_len, function_len;
+
+		int err = parse_line_end(inbuf.data, &inbuf.size, NULL);
+		char *in = inbuf.data;
+		err += parse_word(&in, &flag, &flag_len);
+		err += parse_word(&in, &type, &type_len);
+		err += parse_word(&in, &ptr, &ptr_len);
+		err += parse_word(&in, &function, &function_len);
+
+		if (err || (strncmp("A", flag, flag_len) && strncmp("F", flag, flag_len))) {
 			fprintf(stderr, "Line %lu: Invalid format\n", linenum);
 			return 2;
 		}
 
-		if (!strcmp(flag, "A")) {
-			if (hmap_get(&map, type)) {
-				printf_safe("Line %lu: Repeated alloc: %s %s\n", linenum, type, function);
+		strlist_resize(&sb, 0);
+		strlist_add_sn(&sb, type, type_len);
+		strlist_add(&sb, ' ');
+		strlist_add_sn(&sb, ptr, ptr_len);
+
+		if (!strncmp("A", flag, flag_len)) {
+			if (hmap_get(&map, sb.data)) {
+				printf_safe("Line %lu: Repeated alloc: %s %s\n", linenum, sb.data, function);
 			} else {
-				hmap_put(&map, strdup_safe(type), strdup_safe(function));
+				hmap_put(&map, memdup_safe(sb.data, sb.size + 1), memdup_safe(function, inbuf.size - (size_t) (function - inbuf.data) + 1));
 			}
 		} else {
-			if (!hmap_get(&map, type)) {
-				printf_safe("Line %lu: Free before alloc: %s %s\n", linenum, type, function);
+			if (!hmap_get(&map, sb.data)) {
+				printf_safe("Line %lu: Free before alloc: %s %s\n", linenum, sb.data, function);
 			} else {
-				hmap_remove(&map, type);
+				hmap_remove(&map, sb.data);
 			}
 		}
 	}
@@ -101,12 +97,13 @@ static int run_program(char **argv) {
 		return 2;
 	}
 
-	hmap_init(&map, hash_str, equals_str, free, free);
+	strlist_init(&inbuf);
+	hmap_init(&map, hash_str, equals_str, free_safe, free_safe);
 	strlist_init(&sb);
 
 	int ret = process_file(input, filename);
 
-	free(inbuf);
+	strlist_destroy(&inbuf);
 	hmap_destroy(&map);
 	strlist_destroy(&sb);
 

@@ -5,15 +5,14 @@
 #include <string.h>
 #include <ctype.h>
 #include <limits.h>
-#include "utils/stdlib_utils.h"
+
 #include "utils/stdio_utils.h"
+#include "utils/stdlib_utils.h"
 #include "utils/string_utils.h"
 #include "utils/strlist.h"
 #include "utils/parser.h"
 
-size_t insize;
-char *inbuf;
-struct strlist outbuf;
+struct strlist inbuf, outbuf;
 
 static int parse_srt_time(char **str, long *res, const char *filename, unsigned long linenum, const char *fixing) {
 	unsigned long hours, minutes, seconds, millis;
@@ -66,14 +65,16 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 	size_t last_finished_pos = 0;
 
 	unsigned long linenum = 0;
-	size_t linelen;
-	while ((linelen = (size_t) getline(&inbuf, &insize, input)) != (size_t) -1) {
+	while (1) {
+		strlist_resize(&inbuf, 0);
+		if (strlist_readline(&inbuf, input) == -1) {
+			break;
+		}
 		linenum++;
 
 		char buffer[256];
-		char *s = inbuf;
 
-		if (parse_line_end(s, linelen, buffer)) {
+		if (parse_line_end(inbuf.data, &inbuf.size, buffer)) {
 			fprintf(stderr, "%s: line %lu: Invalid line format\n", filename, linenum);
 			return 2;
 		}
@@ -82,9 +83,10 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 		}
 
 		if (state == 0) {
-			if (!*s) {
+			if (!*inbuf.data) {
 				printf_safe("%s%s: line %lu: Extra blank line\n", fixing, filename, linenum);
 			} else {
+				char *s = inbuf.data;
 				unsigned long subnum_cur;
 				int err = parse_unsigned_long_strict(&s, &subnum_cur);
 				if (err || *s) {
@@ -98,13 +100,15 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 				subnum = subnum_cur;
 
 				if (rewrite) {
-					sprintf(buffer, "%li\r\n", ++subnum_write);
-					strlist_add_s(&outbuf, buffer);
+					size_t written = (size_t) sprintf(buffer, "%li\r\n", ++subnum_write);
+					strlist_add_sn(&outbuf, buffer, written);
 				}
 
 				state = 1;
 			}
+
 		} else if (state == 1) {
+			char *s = inbuf.data;
 			long millis1, millis2;
 			int err = parse_srt_time(&s, &millis1, filename, linenum, fixing);
 			err += parse_string_match(&s, " --> ");
@@ -134,8 +138,8 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 				char srtbuf1[64], srtbuf2[64];
 				print_srt_time(srtbuf1, millis1);
 				print_srt_time(srtbuf2, millis2);
-				sprintf(buffer, "%s --> %s\r\n", srtbuf1, srtbuf2);
-				strlist_add_s(&outbuf, buffer);
+				size_t written = (size_t) sprintf(buffer, "%s --> %s\r\n", srtbuf1, srtbuf2);
+				strlist_add_sn(&outbuf, buffer, written);
 			}
 
 			if (millis1 >= millis2) {
@@ -147,13 +151,14 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 			last_millis = millis2;
 
 			state = 2;
+
 		} else if (state == 2 || state == 3) {
 			if (rewrite) {
-				strlist_add_s(&outbuf, s);
-				strlist_add_s(&outbuf, "\r\n");
+				strlist_add_sn(&outbuf, inbuf.data, inbuf.size);
+				strlist_add_sn(&outbuf, "\r\n", strlen("\r\n"));
 			}
 
-			if (!*s) {
+			if (!*inbuf.data) {
 				if (state == 2) {
 					printf_safe("%s%s: line %lu: No text\n", fixing, filename, linenum);
 
@@ -180,7 +185,7 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 
 		if (rewrite) {
 			if (state == 3) {
-				strlist_add_s(&outbuf, "\r\n");
+				strlist_add_sn(&outbuf, "\r\n", strlen("\r\n"));
 			} else {
 				strlist_resize(&outbuf, last_finished_pos);
 			}
@@ -303,6 +308,7 @@ static int run_program(char **argv) {
 		return 2;
 	}
 
+	strlist_init(&inbuf);
 	if (rewrite) {
 		strlist_init(&outbuf);
 	}
@@ -314,10 +320,10 @@ static int run_program(char **argv) {
 		}
 	}
 
+	strlist_destroy(&inbuf);
 	if (rewrite) {
 		strlist_destroy(&outbuf);
 	}
-	free(inbuf);
 
 	return ret;
 }

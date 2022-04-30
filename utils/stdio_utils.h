@@ -1,4 +1,12 @@
 __attribute__((format(printf, 1, 2)))
+static void trace_printf(const char *format, ...) {
+	/*va_list valist;
+	va_start(valist, format);
+	vfprintf(stderr, format, valist);
+	va_end(valist);*/
+}
+
+__attribute__((format(printf, 1, 2)))
 static int printf_safe(const char *format, ...) {
 	va_list valist;
 	va_start(valist, format);
@@ -34,14 +42,6 @@ static int flush_safe() {
 	if (ret) {
 		fprintf(stderr, "Write error: %s\n", strerror(errno));
 		exit(3);
-	}
-	return ret;
-}
-
-static ssize_t getline_no_eol(char **lineptr, size_t *n, FILE *stream) {
-	ssize_t ret = getline(lineptr, n, stream);
-	if (ret != -1 && (*lineptr)[ret - 1] == '\n') {
-		(*lineptr)[--ret] = '\0';
 	}
 	return ret;
 }

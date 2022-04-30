@@ -8,8 +8,9 @@
 #include <dirent.h>
 #include <sys/wait.h>
 #include <sys/stat.h>
-#include "utils/stdlib_utils.h"
+
 #include "utils/stdio_utils.h"
+#include "utils/stdlib_utils.h"
 #include "utils/strlist.h"
 #include "utils/exec.h"
 
@@ -38,21 +39,6 @@ static int add_to_path(struct strlist *path, const char *subpath, int do_mkdir) 
 	return 0;
 }
 
-static int process_file(struct strlist *in, struct strlist *out) {
-	char *dot = strrchr(out->data, '.');
-	if (dot) {
-		if (!strcasecmp(dot, ".mp3") || !strcasecmp(dot, ".m4a")) {
-			const char *params[] = {"ffmpeg", "-y", "-i", in->data, "-vn", "-codec:a", "copy", "-map_metadata", "-1", out->data, NULL};
-			return exec_and_wait(params[0], params, NULL);
-		} else if (!strcasecmp(dot, ".flac") || !strcasecmp(dot, ".ape")) {
-			strcpy(dot, ".mp3");
-			const char *params[] = {"ffmpeg", "-y", "-i", in->data, "-vn", "-ab", "320k", "-map_metadata", "-1", out->data, NULL};
-			return exec_and_wait(params[0], params, NULL);
-		}
-	}
-	return 0;
-}
-
 static int process_item(struct strlist *in, struct strlist *out, const char *subpath, unsigned char type_hint) {
 	add_to_path(in, subpath, 0);
 
@@ -69,47 +55,66 @@ static int process_item(struct strlist *in, struct strlist *out, const char *sub
 
 	if (type_hint == DT_REG) {
 		add_to_path(out, subpath, 0);
-		return process_file(in, out);
-	} else if (type_hint != DT_DIR) {
+
+		char *dot = strrchr(out->data, '.');
+		if (dot) {
+			if (!strcasecmp(dot, ".mp3") || !strcasecmp(dot, ".m4a")) {
+				const char *params[] = {"ffmpeg", "-y", "-i", in->data, "-vn", "-codec:a", "copy", "-map_metadata", "-1", out->data, NULL};
+				return exec_and_wait(params[0], params, NULL);
+			} else if (!strcasecmp(dot, ".flac") || !strcasecmp(dot, ".ape")) {
+				strcpy(dot, ".mp3");
+				const char *params[] = {"ffmpeg", "-y", "-i", in->data, "-vn", "-ab", "320k", "-map_metadata", "-1", out->data, NULL};
+				return exec_and_wait(params[0], params, NULL);
+			}
+		}
 		return 0;
-	}
 
-	if (add_to_path(out, subpath, 1)) {
-		return 2;
-	}
+	} else if (type_hint == DT_DIR) {
+		if (add_to_path(out, subpath, 1)) {
+			return 2;
+		}
 
-	DIR *d = opendir(in->data);
-	if (!d) {
-		fprintf(stderr, "Error opening directory %s: %s\n", in->data, strerror(errno));
-		return 2;
-	}
+		DIR *d = opendir(in->data);
+		if (!d) {
+			fprintf(stderr, "Error opening directory %s: %s\n", in->data, strerror(errno));
+			return 2;
+		}
 
-	int ret = 0;
+		int ret = 0;
 
-	struct dirent *de;
-	while (!(errno = 0) && (de = readdir(d))) {
-		if (strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
-			size_t in_size = in->size;
-			size_t out_size = out->size;
-
-			if (process_item(in, out, de->d_name, de->d_type)) {
-				ret = 2;
+		while (1) {
+			errno = 0;
+			struct dirent *de = readdir(d);
+			if (!de) {
+				break;
 			}
 
-			strlist_resize(in, in_size);
-			strlist_resize(out, out_size);
-		}
-	}
-	if (errno) {
-		fprintf(stderr, "Error reading directory %s: %s\n", in->data, strerror(errno));
-		ret = 2;
-	}
-	if (closedir(d)) {
-		fprintf(stderr, "Error closing directory %s: %s\n", in->data, strerror(errno));
-		ret = 2;
-	}
+			if (strcmp(de->d_name, ".") && strcmp(de->d_name, "..")) {
+				size_t in_size = in->size;
+				size_t out_size = out->size;
 
-	return ret;
+				if (process_item(in, out, de->d_name, de->d_type)) {
+					ret = 2;
+				}
+
+				strlist_resize(in, in_size);
+				strlist_resize(out, out_size);
+			}
+		}
+		if (errno) {
+			fprintf(stderr, "Error reading directory %s: %s\n", in->data, strerror(errno));
+			ret = 2;
+		}
+		if (closedir(d)) {
+			fprintf(stderr, "Error closing directory %s: %s\n", in->data, strerror(errno));
+			ret = 2;
+		}
+
+		return ret;
+
+	} else {
+		return 0;
+	}
 }
 
 static int run_program(char **argv) {
@@ -145,8 +150,8 @@ static int run_program(char **argv) {
 	strlist_init(&in);
 	strlist_init(&out);
 
-	strlist_add_s(&in, in_c);
-	strlist_add_s(&out, out_c);
+	strlist_add_sn(&in, in_c, strlen(in_c));
+	strlist_add_sn(&out, out_c, strlen(out_c));
 
 	int ret = 0;
 

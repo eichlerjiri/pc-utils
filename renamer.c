@@ -3,17 +3,17 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <string.h>
+#include <ctype.h>
 #include <unistd.h>
 #include <sys/wait.h>
-#include "utils/stdlib_utils.h"
+
 #include "utils/stdio_utils.h"
+#include "utils/stdlib_utils.h"
 #include "utils/string_utils.h"
 #include "utils/ptrlist.h"
 #include "utils/strlist.h"
+#include "utils/parser.h"
 #include "utils/exec.h"
-
-char *inbuf;
-size_t insize;
 
 static int rename_file(char *old, char *new) {
 	if (strcmp(old, new)) {
@@ -62,11 +62,22 @@ static int edit_and_rename(char **argv, size_t cnt, char *tmpfilename) {
 
 	int ret = 0;
 
+	struct strlist inbuf;
 	struct ptrlist list;
+	strlist_init(&inbuf);
 	ptrlist_init(&list);
 
-	while (getline_no_eol(&inbuf, &insize, tmp) != -1) {
-		ptrlist_add(&list, strdup_safe(inbuf));
+	while (1) {
+		strlist_resize(&inbuf, 0);
+		if (strlist_readline(&inbuf, tmp) == -1) {
+			break;
+		}
+		if (parse_line_end(inbuf.data, &inbuf.size, NULL)) {
+			fprintf(stderr, "Invalid line format\n");
+			ret = 2;
+			break;
+		}
+		ptrlist_add(&list, memdup_safe(inbuf.data, inbuf.size + 1));
 	}
 	if (!feof(tmp)) {
 		fprintf(stderr, "Error reading file %s: %s\n", tmpfilename, strerror(errno));
@@ -81,6 +92,7 @@ static int edit_and_rename(char **argv, size_t cnt, char *tmpfilename) {
 		ret = process_rename_list(argv, cnt, &list);
 	}
 
+	strlist_destroy(&inbuf);
 	ptrlist_destroy(&list);
 
 	return ret;
@@ -101,7 +113,6 @@ static int run_program(char **argv) {
 		}
 	}
 
-
 	char tmpfilename[] = "/tmp/renamer XXXXXX.txt";
 	int fd = mkstemps(tmpfilename, 4);
 	if (!fd) {
@@ -120,7 +131,7 @@ static int run_program(char **argv) {
 	if (!ret) {
 		for (size_t i = 0; i < cnt; i++) {
 			if (fprintf(tmp, "%s\n", argv[i]) < 0) {
-				fprintf(stderr, "Error reading file %s: %s\n", tmpfilename, strerror(errno));
+				fprintf(stderr, "Error writing file %s: %s\n", tmpfilename, strerror(errno));
 				ret = 2;
 				break;
 			}
@@ -139,8 +150,6 @@ static int run_program(char **argv) {
 		fprintf(stderr, "Error removing file %s: %s\n", tmpfilename, strerror(errno));
 		ret = 2;
 	}
-
-	free(inbuf);
 
 	return ret;
 }

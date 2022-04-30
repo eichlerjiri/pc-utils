@@ -4,13 +4,14 @@
 #include <errno.h>
 #include <string.h>
 #include <iconv.h>
-#include "utils/stdlib_utils.h"
+
 #include "utils/stdio_utils.h"
+#include "utils/stdlib_utils.h"
+#include "utils/strlist.h"
 #include "utils/iconv_utils.h"
 
 iconv_t cd_utf8, cd_latin1;
-size_t insize, outsize;
-char *inbuf, *outbuf;
+struct strlist inbuf, outbuf;
 
 static int nonascii(char *in, size_t n) {
 	for (size_t i = 0; i < n; i++) {
@@ -31,22 +32,23 @@ static int process_file(char *filename) {
 	int ret = 0;
 
 	unsigned long linenum = 0;
-	size_t inlen;
-	while ((inlen = (size_t) getline_no_eol(&inbuf, &insize, input)) != (size_t) -1) {
+	while (1) {
+		strlist_resize(&inbuf, 0);
+		if (strlist_readline(&inbuf, input) == -1) {
+			break;
+		}
 		linenum++;
 
-		if (nonascii(inbuf, inlen)) {
+		if (nonascii(inbuf.data, inbuf.size)) {
+			strlist_resize(&outbuf, 0);
 			const char* code = "utf8";
-			size_t outlen = iconv_direct(&cd_utf8, "utf8", code, inbuf, inlen, &outbuf, &outsize);
-
-			if (outlen == (size_t) -1) {
+			if (iconv_direct(&cd_utf8, "utf8", code, inbuf.data, inbuf.size, &outbuf) == -1) {
 				code = "latin1";
-				outlen = iconv_direct(&cd_latin1, "utf8", code, inbuf, inlen, &outbuf, &outsize);
+				iconv_direct(&cd_latin1, "utf8", code, inbuf.data, inbuf.size, &outbuf);
 			}
 
 			printf_safe("%s: line %lu %s: ", filename, linenum, code);
-			write_safe(outbuf, outlen, 1);
-			putchar_safe('\n');
+			write_safe(outbuf.data, outbuf.size, 1);
 		}
 	}
 	if (!feof(input)) {
@@ -69,6 +71,10 @@ static int run_program(char **argv) {
 	}
 
 	int ret = 0;
+
+	strlist_init(&inbuf);
+	strlist_init(&outbuf);
+
 	while (*argv) {
 		if (process_file(*argv++)) {
 			ret = 2;
@@ -77,8 +83,8 @@ static int run_program(char **argv) {
 
 	iconv_close_if_opened(cd_utf8);
 	iconv_close_if_opened(cd_latin1);
-	free(inbuf);
-	free(outbuf);
+	strlist_destroy(&inbuf);
+	strlist_destroy(&outbuf);
 
 	return ret;
 }

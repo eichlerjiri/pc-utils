@@ -11,20 +11,24 @@ static int exec_and_wait(const char *file, const char **argv, struct strlist *ou
 	if (pid == -1) {
 		fprintf(stderr, "Error fork: %s\n", strerror(errno));
 		exit(3);
+
 	} else if (pid) {
 		int ret = 0;
 
 		if (output) {
 			close(fildes[1]);
 
-			ssize_t n;
-			char buffer[4096];
-			while ((n = read(fildes[0], buffer, sizeof(buffer))) > 0) {
-				strlist_add_sn(output, buffer, (size_t) n);
-			}
-			if (n == -1) {
-				fprintf(stderr, "Error read: %s\n", strerror(errno));
-				ret = 2;
+			while (1) {
+				strlist_assure_capacity(output, 4096);
+				size_t n = (size_t) read(fildes[0], output->data + output->size, 4096);
+				if (!n) {
+					break;
+				} else if (n == (size_t) -1) {
+					fprintf(stderr, "Error read: %s\n", strerror(errno));
+					ret = 2;
+					break;
+				}
+				strlist_resize(output, output->size + n);
 			}
 
 			close(fildes[0]);
@@ -32,7 +36,7 @@ static int exec_and_wait(const char *file, const char **argv, struct strlist *ou
 
 		int wstatus = 0;
 		pid_t wret = waitpid(pid, &wstatus, 0);
-		if (wret <= 0) {
+		if (wret == -1) {
 			fprintf(stderr, "Error waitpid: %s\n", strerror(errno));
 			exit(3);
 		}
@@ -47,6 +51,7 @@ static int exec_and_wait(const char *file, const char **argv, struct strlist *ou
 		}
 
 		return ret;
+
 	} else {
 		if (output) {
 			close(fildes[0]);
@@ -57,7 +62,7 @@ static int exec_and_wait(const char *file, const char **argv, struct strlist *ou
 			}
 		}
 
-		execvp(file, (char *const*) argv);
+		execvp(file, (char*const*) argv);
 		fprintf(stderr, "Error starting %s: %s\n", file, strerror(errno));
 		exit(2);
 	}

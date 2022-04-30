@@ -1,12 +1,14 @@
-static int parse_word(char **str, struct strlist *res) {
+static int parse_word(char **str, char **res, size_t *res_length) {
 	char *s = *str;
 	while (*s && isspace(*s)) {
 		s++;
 	}
 
+	char *start = s;
+
 	int err = 1;
 	while (*s && !isspace(*s)) {
-		strlist_add(res, *s++);
+		s++;
 		err = 0;
 	}
 	if (err) {
@@ -14,6 +16,8 @@ static int parse_word(char **str, struct strlist *res) {
 	}
 
 	*str = s;
+	*res = start;
+	*res_length = (size_t) (s - start);
 	return 0;
 }
 
@@ -99,8 +103,8 @@ static int parse_string_match(char **str, const char *match) {
 	return 0;
 }
 
-static int parse_line_end(char *str, size_t linelen, char *res) {
-	if (strlen(str) != linelen) {
+static int parse_line_end(char *str, size_t *linelen, char *res) {
+	if (strlen(str) != *linelen) {
 		return 1;
 	}
 	while (*str && *str != '\r' && *str != '\n') {
@@ -113,6 +117,8 @@ static int parse_line_end(char *str, size_t linelen, char *res) {
 	if (res) {
 		strcpy(res, str);
 	}
+
+	*linelen -= strlen(str);
 	*str = '\0';
 	return 0;
 }

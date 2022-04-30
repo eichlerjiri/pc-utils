@@ -3,6 +3,7 @@
 #include <stdarg.h>
 #include <errno.h>
 #include <string.h>
+
 #include "utils/stdio_utils.h"
 
 static int gen_password(const char *filename, FILE *input, int length) {
