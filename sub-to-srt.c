@@ -80,18 +80,7 @@ static void print_srt_time(char *buffer, unsigned long millis) {
 	sprintf(buffer, "%02lu:%02lu:%02lu,%03lu", hours, minutes, secs, millis);
 }
 
-static int process_file(const char *filename, FILE *input) {
-	char *dot = strrchr(filename, '.');
-	if (!dot || strcasecmp(dot, ".sub")) {
-		fprintf(stderr, "Filename does not end with .sub: %s\n", filename);
-		return 2;
-	}
-
-	float fps;
-	if (determine_fps(filename, &fps)) {
-		return 2;
-	}
-
+static int process_file(const char *filename, FILE *input, float fps) {
 	strlist_resize(&outbuf, 0);
 
 	unsigned long linenum = 0;
@@ -160,43 +149,54 @@ static int process_file(const char *filename, FILE *input) {
 		return 2;
 	}
 
-	strlist_resize(&namebuf, 0);
-	strlist_add_sn(&namebuf, filename, (size_t) (dot - filename));
-	strlist_add_sn(&namebuf, ".srt", strlen(".srt"));
-
-	FILE *output = fopen(namebuf.data, "w");
-	if (!output) {
-		fprintf(stderr, "Error opening file %s for writing: %s\n", namebuf.data, strerror(errno));
-		return 2;
-	}
-
-	int ret = 0;
-
-	if (fwrite(outbuf.data, outbuf.size, 1, output) != 1) {
-		fprintf(stderr, "Error writing file %s\n", namebuf.data);
-		ret = 2;
-	}
-
-	if (fclose(output)) {
-		fprintf(stderr, "Error closing file %s for writing: %s\n", namebuf.data, strerror(errno));
-		ret = 2;
-	}
-
-	return ret;
+	return 0;
 }
 
 static int process_filename(const char *filename) {
-	FILE *input = fopen(filename, "r");
+	char *dot = strrchr(filename, '.');
+	if (!dot || strcasecmp(dot, ".sub")) {
+		fprintf(stderr, "Filename does not end with .sub: %s\n", filename);
+		return 2;
+	}
+
+	float fps;
+	if (determine_fps(filename, &fps)) {
+		return 2;
+	}
+
+	FILE *input = fopen_trace(filename, "r");
 	if (!input) {
 		fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
 		return 2;
 	}
 
-	int ret = process_file(filename, input);
+	int ret = process_file(filename, input, fps);
 
-	if (fclose(input)) {
+	if (fclose_trace(input)) {
 		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));
 		ret = 2;
+	}
+
+	if (!ret) {
+		strlist_resize(&namebuf, 0);
+		strlist_add_sn(&namebuf, filename, (size_t) (dot - filename));
+		strlist_add_sn(&namebuf, ".srt", strlen(".srt"));
+
+		FILE *output = fopen_trace(namebuf.data, "w");
+		if (!output) {
+			fprintf(stderr, "Error opening file %s for writing: %s\n", namebuf.data, strerror(errno));
+			return 2;
+		}
+
+		if (fwrite(outbuf.data, outbuf.size, 1, output) != 1) {
+			fprintf(stderr, "Error writing file %s\n", namebuf.data);
+			ret = 2;
+		}
+
+		if (fclose_trace(output)) {
+			fprintf(stderr, "Error closing file %s for writing: %s\n", namebuf.data, strerror(errno));
+			ret = 2;
+		}
 	}
 
 	return ret;

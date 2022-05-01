@@ -12,10 +12,10 @@ static void ptrlist_init(struct ptrlist *list) {
 
 static void ptrlist_destroy(struct ptrlist *list) {
 	for (size_t i = 0; i < list->size; i++) {
-		free_safe(list->data[i]);
+		free_trace(list->data[i]);
 	}
 
-	free_safe(list->data);
+	free_trace(list->data);
 }
 
 static void ptrlist_assure_capacity(struct ptrlist *list, size_t add) {

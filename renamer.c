@@ -54,7 +54,7 @@ static int edit_and_rename(char **argv, size_t cnt, char *tmpfilename) {
 		return 2;
 	}
 
-	FILE *tmp = fopen(tmpfilename, "r");
+	FILE *tmp = fopen_trace(tmpfilename, "r");
 	if (!tmp) {
 		fprintf(stderr, "Error opening file %s: %s\n", tmpfilename, strerror(errno));
 		return 2;
@@ -83,7 +83,7 @@ static int edit_and_rename(char **argv, size_t cnt, char *tmpfilename) {
 		fprintf(stderr, "Error reading file %s: %s\n", tmpfilename, strerror(errno));
 		ret = 2;
 	}
-	if (fclose(tmp)) {
+	if (fclose_trace(tmp)) {
 		fprintf(stderr, "Error closing file %s: %s\n", tmpfilename, strerror(errno));
 		ret = 2;
 	}
@@ -113,40 +113,34 @@ static int run_program(char **argv) {
 		}
 	}
 
-	char tmpfilename[] = "/tmp/renamer XXXXXX.txt";
-	int fd = mkstemps(tmpfilename, 4);
+	char tmpfilename[] = "/tmp/renamer_XXXXXX.txt";
+	int fd = mkstemps_trace(tmpfilename, 4);
 	if (!fd) {
 		fprintf(stderr, "Error creating file %s: %s\n", tmpfilename, strerror(errno));
 		return 2;
 	}
 
+	FILE *tmp = fdopen_safe(fd, "w");
+
 	int ret = 0;
 
-	FILE *tmp = fdopen(fd, "w");
-	if (!tmp) {
-		fprintf(stderr, "Error opening file %s: %s\n", tmpfilename, strerror(errno));
-		ret = 2;
-	}
-
-	if (!ret) {
-		for (size_t i = 0; i < cnt; i++) {
-			if (fprintf(tmp, "%s\n", argv[i]) < 0) {
-				fprintf(stderr, "Error writing file %s: %s\n", tmpfilename, strerror(errno));
-				ret = 2;
-				break;
-			}
-		}
-		if (fclose(tmp)) {
-			fprintf(stderr, "Error closing file %s: %s\n", tmpfilename, strerror(errno));
+	for (size_t i = 0; i < cnt; i++) {
+		if (fprintf(tmp, "%s\n", argv[i]) < 0) {
+			fprintf(stderr, "Error writing file %s: %s\n", tmpfilename, strerror(errno));
 			ret = 2;
+			break;
 		}
+	}
+	if (fclose_trace(tmp)) {
+		fprintf(stderr, "Error closing file %s: %s\n", tmpfilename, strerror(errno));
+		ret = 2;
 	}
 
 	if (!ret) {
 		ret = edit_and_rename(argv, cnt, tmpfilename);
 	}
 
-	if (remove(tmpfilename)) {
+	if (remove_trace(tmpfilename)) {
 		fprintf(stderr, "Error removing file %s: %s\n", tmpfilename, strerror(errno));
 		ret = 2;
 	}

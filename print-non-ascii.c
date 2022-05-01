@@ -23,7 +23,7 @@ static int nonascii(char *in, size_t n) {
 }
 
 static int process_file(char *filename) {
-	FILE *input = fopen(filename, "r");
+	FILE *input = fopen_trace(filename, "r");
 	if (!input) {
 		fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
 		return 2;
@@ -55,7 +55,7 @@ static int process_file(char *filename) {
 		fprintf(stderr, "Error reading file %s: %s\n", filename, strerror(errno));
 		ret = 2;
 	}
-	if (fclose(input)) {
+	if (fclose_trace(input)) {
 		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));
 		ret = 2;
 	}

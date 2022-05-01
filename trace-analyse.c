@@ -91,14 +91,14 @@ static int run_program(char **argv) {
 		return 2;
 	}
 
-	FILE *input = fopen(filename, "r");
+	FILE *input = fopen_trace(filename, "r");
 	if (!input) {
 		fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
 		return 2;
 	}
 
 	strlist_init(&inbuf);
-	hmap_init(&map, hash_str, equals_str, free_safe, free_safe);
+	hmap_init(&map, hash_str, equals_str, free_trace, free_trace);
 	strlist_init(&sb);
 
 	int ret = process_file(input, filename);
@@ -107,7 +107,7 @@ static int run_program(char **argv) {
 	hmap_destroy(&map);
 	strlist_destroy(&sb);
 
-	if (fclose(input)) {
+	if (fclose_trace(input)) {
 		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));
 		ret = 2;
 	}

@@ -11,6 +11,8 @@
 #include "utils/stdio_utils.h"
 #include "utils/stdlib_utils.h"
 #include "utils/string_utils.h"
+#include "utils/dirent_utils.h"
+#include "utils/fcntl_utils.h"
 #include "utils/strlist.h"
 #include "utils/hmap.h"
 #include "utils/crc64.h"
@@ -31,7 +33,7 @@ static int process_item(struct strlist *path, unsigned char type_hint) {
 	}
 
 	if (type_hint == DT_REG) {
-		int input = open(path->data, O_RDONLY);
+		int input = open_trace(path->data, O_RDONLY);
 		if (input == -1) {
 			fprintf(stderr, "Error opening file %s: %s\n", path->data, strerror(errno));
 			return 2;
@@ -51,7 +53,7 @@ static int process_item(struct strlist *path, unsigned char type_hint) {
 			fprintf(stderr, "Error reading file %s: %s\n", path->data, strerror(errno));
 			ret = 2;
 		}
-		if (close(input) == -1) {
+		if (close_trace(input) == -1) {
 			fprintf(stderr, "Error closing file %s: %s\n", path->data, strerror(errno));
 			ret = 2;
 		}
@@ -67,7 +69,7 @@ static int process_item(struct strlist *path, unsigned char type_hint) {
 
 		return ret;
 	} else if (type_hint == DT_DIR) {
-		DIR *d = opendir(path->data);
+		DIR *d = opendir_trace(path->data);
 		if (!d) {
 			fprintf(stderr, "Error opening directory %s: %s\n", path->data, strerror(errno));
 			return 2;
@@ -101,7 +103,7 @@ static int process_item(struct strlist *path, unsigned char type_hint) {
 			fprintf(stderr, "Error reading directory %s: %s\n", path->data, strerror(errno));
 			ret = 2;
 		}
-		if (closedir(d)) {
+		if (closedir_trace(d)) {
 			fprintf(stderr, "Error closing directory %s: %s\n", path->data, strerror(errno));
 			ret = 2;
 		}
@@ -126,7 +128,7 @@ static int run_program(char **argv) {
 	}
 
 	generate_crc64_table(crc64_table);
-	hmap_init(&map, hash_ptr, equals_ptr, nofree, free_safe);
+	hmap_init(&map, hash_ptr, equals_ptr, nofree, free_trace);
 
 	struct strlist path;
 	strlist_init(&path);

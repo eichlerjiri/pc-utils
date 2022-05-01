@@ -11,6 +11,7 @@
 
 #include "utils/stdio_utils.h"
 #include "utils/stdlib_utils.h"
+#include "utils/dirent_utils.h"
 #include "utils/strlist.h"
 #include "utils/exec.h"
 
@@ -74,7 +75,7 @@ static int process_item(struct strlist *in, struct strlist *out, const char *sub
 			return 2;
 		}
 
-		DIR *d = opendir(in->data);
+		DIR *d = opendir_trace(in->data);
 		if (!d) {
 			fprintf(stderr, "Error opening directory %s: %s\n", in->data, strerror(errno));
 			return 2;
@@ -105,7 +106,7 @@ static int process_item(struct strlist *in, struct strlist *out, const char *sub
 			fprintf(stderr, "Error reading directory %s: %s\n", in->data, strerror(errno));
 			ret = 2;
 		}
-		if (closedir(d)) {
+		if (closedir_trace(d)) {
 			fprintf(stderr, "Error closing directory %s: %s\n", in->data, strerror(errno));
 			ret = 2;
 		}

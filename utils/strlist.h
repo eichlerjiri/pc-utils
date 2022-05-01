@@ -12,7 +12,7 @@ static void strlist_init(struct strlist *list) {
 
 static void strlist_destroy(struct strlist *list) {
 	if (list->capacity) {
-		free_safe(list->data);
+		free_trace(list->data);
 	}
 }
 

@@ -198,7 +198,7 @@ static void run_gui(FILE *tty) {
 	}
 
 	endwin();
-	delscreen(screen);
+	delscreen_trace(screen);
 }
 
 static int run_program(char **argv) {
@@ -219,13 +219,13 @@ static int run_program(char **argv) {
 			break;
 		} else if ((!strcmp(arg, "-in") || !strcmp(arg, "-ex")) && *argv) {
 			regex_t compiled;
-			int ret = regcomp(&compiled, *argv++, REG_EXTENDED | REG_NOSUB);
+			int ret = regcomp_trace(&compiled, *argv++, REG_EXTENDED | REG_NOSUB);
 			if (ret) {
 				size_t bufsize = regerror(ret, &compiled, NULL, 0);
 				char *buf = malloc_safe(bufsize);
 				regerror(ret, &compiled, buf, bufsize);
 				fprintf(stderr, "Invalid regular expression: %s\n", buf);
-				free_safe(buf);
+				free_trace(buf);
 				return 2;
 			}
 			unilist_add(&regexes, &compiled);
@@ -248,7 +248,7 @@ static int run_program(char **argv) {
 
 	FILE *input;
 	if (filename) {
-		input = fopen(filename, "r");
+		input = fopen_trace(filename, "r");
 		if (!input) {
 			fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
 			return 2;
@@ -319,7 +319,7 @@ static int run_program(char **argv) {
 		fprintf(stderr, "Error reading file %s: %s\n", filename, strerror(errno));
 		ret = 2;
 	}
-	if (fclose(input)) {
+	if (fclose_trace(input)) {
 		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));
 		ret = 2;
 	}
@@ -328,7 +328,7 @@ static int run_program(char **argv) {
 
 	if (!ret) {
 		if (isatty_safe(fileno_safe(stdout))) {
-			FILE *tty = fopen("/dev/tty", "r+");
+			FILE *tty = fopen_trace("/dev/tty", "r+");
 			if (!tty) {
 				fprintf(stderr, "Error opening TTY: %s\n", strerror(errno));
 				return 2;
@@ -336,7 +336,7 @@ static int run_program(char **argv) {
 
 			run_gui(tty);
 
-			if (fclose(tty)) {
+			if (fclose_trace(tty)) {
 				fprintf(stderr, "Error closing TTY: %s\n", strerror(errno));
 				return 2;
 			}
@@ -362,7 +362,7 @@ int main(int argc, char **argv) {
 
 	regex_t *regexes_data = regexes.data;
 	for (size_t i = 0; i < regexes.size; i++) {
-		regfree(regexes_data + i);
+		regfree_trace(regexes_data + i);
 	}
 
 	unilist_destroy(&regexes);

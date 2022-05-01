@@ -192,33 +192,11 @@ static int process_file(const char *filename, FILE *input, long from, long to, i
 		}
 	}
 
-	if (rewrite) {
-		FILE *output = fopen(filename, "w");
-		if (!output) {
-			fprintf(stderr, "Error opening file %s for writing: %s\n", filename, strerror(errno));
-			return 2;
-		}
-
-		int ret = 0;
-
-		if (fwrite(outbuf.data, outbuf.size, 1, output) != 1) {
-			fprintf(stderr, "Error writing file %s\n", filename);
-			ret = 2;
-		}
-
-		if (fclose(output)) {
-			fprintf(stderr, "Error closing file %s for writing: %s\n", filename, strerror(errno));
-			ret = 2;
-		}
-
-		return ret;
-	}
-
 	return 0;
 }
 
 static int process_filename(const char *filename, long from, long to, int rewrite, long diff, float diff_fps) {
-	FILE *input = fopen(filename, "r");
+	FILE *input = fopen_trace(filename, "r");
 	if (!input) {
 		fprintf(stderr, "Error opening file %s: %s\n", filename, strerror(errno));
 		return 2;
@@ -226,9 +204,27 @@ static int process_filename(const char *filename, long from, long to, int rewrit
 
 	int ret = process_file(filename, input, from, to, rewrite, diff, diff_fps);
 
-	if (fclose(input)) {
+	if (fclose_trace(input)) {
 		fprintf(stderr, "Error closing file %s: %s\n", filename, strerror(errno));
 		ret = 2;
+	}
+
+	if (!ret && rewrite) {
+		FILE *output = fopen_trace(filename, "w");
+		if (!output) {
+			fprintf(stderr, "Error opening file %s for writing: %s\n", filename, strerror(errno));
+			return 2;
+		}
+
+		if (fwrite(outbuf.data, outbuf.size, 1, output) != 1) {
+			fprintf(stderr, "Error writing file %s\n", filename);
+			ret = 2;
+		}
+
+		if (fclose_trace(output)) {
+			fprintf(stderr, "Error closing file %s for writing: %s\n", filename, strerror(errno));
+			ret = 2;
+		}
 	}
 
 	return ret;

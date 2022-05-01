@@ -31,9 +31,18 @@ static void *realloc_safe(void *ptr, size_t size) {
 	return ret;
 }
 
-static void free_safe(void *ptr) {
+static void free_trace(void *ptr) {
 	if (ptr) {
 		trace_printf("F MEM %p free\n", ptr);
 	}
 	free(ptr);
+}
+
+static int mkstemps_trace(char *template, int suffixlen) {
+	int ret = mkstemps(template, suffixlen);
+	if (ret) {
+		trace_printf("A FD %i mkstemps (%s)\n", ret, template);
+		trace_printf("A DISKFILE %s mkstemps\n", template);
+	}
+	return ret;
 }

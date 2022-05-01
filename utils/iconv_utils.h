@@ -5,6 +5,7 @@ static int iconv_direct(iconv_t *cd, const char *tocode, const char *fromcode, c
 			fprintf(stderr, "Error initializing iconv: %s\n", strerror(errno));
 			exit(3);
 		}
+		trace_printf("A ICONV %p iconv_open (%s to %s)\n", *cd, fromcode, tocode);
 	}
 
 	size_t done = 0;
@@ -31,6 +32,7 @@ static int iconv_direct(iconv_t *cd, const char *tocode, const char *fromcode, c
 
 static void iconv_close_if_opened(iconv_t cd) {
 	if (cd) {
+		trace_printf("F ICONV %p iconv_close\n", cd);
 		iconv_close(cd);
 	}
 }

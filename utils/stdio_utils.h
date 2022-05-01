@@ -54,3 +54,33 @@ static int fileno_safe(FILE *stream) {
 	}
 	return ret;
 }
+
+static FILE *fdopen_safe(int fd, const char *mode) {
+	trace_printf("F FD %i fdopen\n", fd);
+	FILE *ret = fdopen(fd, mode);
+	if (!ret) {
+		fprintf(stderr, "Error fdopen: %s\n", strerror(errno));
+		exit(3);
+	}
+	trace_printf("A FILE %p fdopen (%i)\n", (void*) ret, fd);
+	return ret;
+}
+
+static FILE *fopen_trace(const char *pathname, const char *mode) {
+	FILE *ret = fopen(pathname, mode);
+	if (ret) {
+		trace_printf("A FILE %p fopen (%s)\n", (void*) ret, pathname);
+	}
+	return ret;
+}
+
+static int fclose_trace(FILE *stream) {
+	trace_printf("F FILE %p fclose\n", (void*) stream);
+	int ret = fclose(stream);
+	return ret;
+}
+
+static int remove_trace(const char *pathname) {
+	trace_printf("F DISKFILE %s remove\n", pathname);
+	return remove(pathname);
+}

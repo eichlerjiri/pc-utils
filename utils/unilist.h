@@ -13,7 +13,7 @@ static void unilist_init(struct unilist *list, size_t item_size) {
 }
 
 static void unilist_destroy(struct unilist *list) {
-	free_safe(list->data);
+	free_trace(list->data);
 }
 
 static void unilist_assure_capacity(struct unilist *list, size_t add) {

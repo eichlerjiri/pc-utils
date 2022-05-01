@@ -56,12 +56,12 @@ static void hmap_destroy(struct hmap *m) {
 			struct hmap_item *next = item->next;
 			m->free_key(item->key);
 			m->free_value(item->value);
-			free_safe(item);
+			free_trace(item);
 			item = next;
 		}
 	}
 
-	free_safe(m->data);
+	free_trace(m->data);
 }
 
 static void hmap_resize(struct hmap *m) {
@@ -91,7 +91,7 @@ static void hmap_resize(struct hmap *m) {
 		}
 	}
 
-	free_safe(orig_data);
+	free_trace(orig_data);
 }
 
 static void *hmap_get(struct hmap *m, const void *key) {
@@ -148,7 +148,7 @@ static void hmap_remove(struct hmap *m, const void *key) {
 			m->free_key(item->key);
 			m->free_value(item->value);
 			*link = item->next;
-			free_safe(item);
+			free_trace(item);
 			m->size--;
 			return;
 		}
